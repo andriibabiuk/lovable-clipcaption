@@ -190,6 +190,9 @@ function HomePage() {
             <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 text-sm font-medium">Drop videos here or click to browse</p>
             <p className="text-xs text-muted-foreground mt-1">Batch upload supported</p>
+            <p className="text-xs text-muted-foreground mt-2 max-w-sm mx-auto">
+              We do not store or play your videos. Only a single-frame thumbnail is extracted so you can identify the file.
+            </p>
             <input
               ref={inputRef}
               type="file"
