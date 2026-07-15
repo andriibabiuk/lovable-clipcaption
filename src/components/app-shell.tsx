@@ -144,24 +144,29 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             ))}
             <div className="pt-2 border-t flex items-center justify-between">
-              <div className="flex flex-col min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-foreground truncate">
-                    {profile.name ?? profile.email}
-                  </span>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-9 w-9 rounded-full bg-secondary text-foreground flex items-center justify-center text-sm font-medium shrink-0">
+                  {initials || "U"}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-foreground truncate">
+                      {profile.name ?? profile.email}
+                    </span>
+                    {quota && (
+                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                        {quota.tier}
+                      </span>
+                    )}
+                  </div>
                   {quota && (
-                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                      {quota.tier}
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {quota.monthly_limit == null
+                        ? "Unlimited"
+                        : `${quota.used} / ${quota.monthly_limit} generations`}
                     </span>
                   )}
                 </div>
-                {quota && (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {quota.monthly_limit == null
-                      ? "Unlimited"
-                      : `${quota.used} / ${quota.monthly_limit} generations`}
-                  </span>
-                )}
               </div>
               <Button variant="outline" size="sm" onClick={handleSignOut}>
                 Sign out
