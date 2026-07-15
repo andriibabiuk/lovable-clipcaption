@@ -380,11 +380,6 @@ function OutputPanel({
   const [meta, setMeta] = useState(output.metadata);
   useEffect(() => setMeta(output.metadata), [output]);
 
-  const combined = useMemo(() => buildCombinedText(output.videoName, meta), [output.videoName, meta]);
-  const csv = useMemo(() => buildCsv(output.videoName, meta), [output.videoName, meta]);
-  const json = useMemo(() => JSON.stringify({ video: output.videoName, metadata: meta }, null, 2), [output.videoName, meta]);
-
-  const base = safeFilename(output.videoName.replace(/\.[a-z0-9]+$/i, ""));
   const copy = (t: string) => {
     navigator.clipboard.writeText(t);
     toast.success("Copied");
@@ -426,18 +421,7 @@ function OutputPanel({
       </Tabs>
 
       <div className="flex flex-wrap gap-2 pt-2 border-t">
-        <Button variant="outline" size="sm" onClick={() => downloadBlob(`${base}-metadata.txt`, "text/plain", combined)}>
-          <Download className="h-4 w-4 mr-1.5" /> All metadata (.txt)
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => downloadBlob(`${base}-metadata.json`, "application/json", json)}>
-          <Download className="h-4 w-4 mr-1.5" /> JSON
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => downloadBlob(`${base}-metadata.csv`, "text/csv", csv)}>
-          <Download className="h-4 w-4 mr-1.5" /> CSV
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => downloadBlob(`${base}.srt`, "application/x-subrip", output.srt)}>
-          <Download className="h-4 w-4 mr-1.5" /> SRT subtitles
-        </Button>
+        <ExportButtons videoName={output.videoName} metadata={meta} srt={output.srt} />
       </div>
     </section>
   );
