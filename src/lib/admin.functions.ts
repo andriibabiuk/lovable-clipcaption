@@ -31,6 +31,18 @@ export const listUsersWithRoles = createServerFn({ method: "GET" })
       .select("user_id, role");
     if (rolesErr) throw rolesErr;
 
+    const { data: subs } = await supabaseAdmin
+      .from("subscriptions")
+      .select("user_id, status");
+    const subByUser = new Map<string, string>();
+    for (const s of subs ?? []) subByUser.set(s.user_id, s.status);
+
+    const { data: vids } = await supabaseAdmin
+      .from("video_metadata")
+      .select("user_id");
+    const videoCounts = new Map<string, number>();
+    for (const v of vids ?? []) videoCounts.set(v.user_id, (videoCounts.get(v.user_id) ?? 0) + 1);
+
     const rolesByUser = new Map<string, string[]>();
     for (const r of roles ?? []) {
       const list = rolesByUser.get(r.user_id) ?? [];
@@ -51,6 +63,8 @@ export const listUsersWithRoles = createServerFn({ method: "GET" })
           email: u.email ?? "",
           created_at: u.created_at,
           tier,
+          subscription_status: subByUser.get(u.id) ?? "active",
+          videos_processed: videoCounts.get(u.id) ?? 0,
         };
       })
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
@@ -99,9 +113,31 @@ export const getPlatformStats = createServerFn({ method: "GET" })
     const { data: usersRes } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1 });
     const totalUsers = (usersRes as { total?: number } | null)?.total ?? null;
 
+    const { count: totalVideos } = await supabaseAdmin
+      .from("video_metadata")
+      .select("*", { count: "exact", head: true });
+
+    const { count: premiumActive } = await supabaseAdmin
+      .from("subscriptions")
+      .select("*", { count: "exact", head: true })
+      .eq("plan_type", "premium")
+      .eq("status", "active");
+
     return {
       totalUsers,
       totalGenerations: totalGenerations ?? 0,
       monthGenerations: monthGenerations ?? 0,
+      totalVideos: totalVideos ?? 0,
+      estimatedMonthlyRevenue: (premiumActive ?? 0) * 10,
     };
+  });
+
+export const getTopKeywords = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin.rpc("top_keywords", { _limit: 30 });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Array<{ keyword: string; uses: number }>;
   });

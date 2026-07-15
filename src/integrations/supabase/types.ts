@@ -39,6 +39,8 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          renewal_date: string | null
+          subscription_status: string
           updated_at: string
         }
         Insert: {
@@ -47,6 +49,8 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id: string
+          renewal_date?: string | null
+          subscription_status?: string
           updated_at?: string
         }
         Update: {
@@ -55,7 +59,42 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          renewal_date?: string | null
+          subscription_status?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          id: string
+          plan_type: string
+          renewal_date: string | null
+          status: string
+          stripe_customer_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          plan_type?: string
+          renewal_date?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          plan_type?: string
+          renewal_date?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -77,6 +116,48 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      video_metadata: {
+        Row: {
+          created_at: string
+          id: string
+          keywords: string[]
+          language: string | null
+          metadata_json: Json
+          subtitle_srt: string | null
+          thumbnail_url: string | null
+          topic: string | null
+          updated_at: string
+          user_id: string
+          video_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          keywords?: string[]
+          language?: string | null
+          metadata_json?: Json
+          subtitle_srt?: string | null
+          thumbnail_url?: string | null
+          topic?: string | null
+          updated_at?: string
+          user_id: string
+          video_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          keywords?: string[]
+          language?: string | null
+          metadata_json?: Json
+          subtitle_srt?: string | null
+          thumbnail_url?: string | null
+          topic?: string | null
+          updated_at?: string
+          user_id?: string
+          video_name?: string
         }
         Relationships: []
       }
@@ -109,6 +190,13 @@ export type Database = {
           monthly_limit: number
           remaining: number
           used: number
+        }[]
+      }
+      top_keywords: {
+        Args: { _limit?: number }
+        Returns: {
+          keyword: string
+          uses: number
         }[]
       }
     }

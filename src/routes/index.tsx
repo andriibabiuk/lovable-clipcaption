@@ -24,7 +24,7 @@ function Index() {
           <nav className="flex items-center gap-2">
             {signedIn ? (
               <Button asChild size="sm">
-                <Link to="/dashboard">Open app</Link>
+                <Link to="/home">Open app</Link>
               </Button>
             ) : (
               <>
@@ -51,7 +51,7 @@ function Index() {
           <div className="mt-8 flex justify-center gap-3">
             {signedIn ? (
               <Button asChild size="lg">
-                <Link to="/dashboard">Go to dashboard</Link>
+                <Link to="/home">Open app</Link>
               </Button>
             ) : (
               <Button asChild size="lg">
