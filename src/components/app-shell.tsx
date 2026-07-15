@@ -88,9 +88,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <div className="flex items-center gap-2">
             {quota && (
-              <Badge variant="secondary" className="hidden sm:inline-flex capitalize">
-                {quota.tier}
-              </Badge>
+              <div className="hidden sm:flex items-center gap-2">
+                <Badge variant="secondary" className="capitalize">
+                  {quota.tier}
+                </Badge>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {quota.monthly_limit == null
+                    ? "Unlimited"
+                    : `${quota.used} / ${quota.monthly_limit} used`}
+                </span>
+              </div>
             )}
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
