@@ -47,6 +47,7 @@ import {
   parsePlatformMetadata,
 } from "@/lib/export";
 import { ExportButtons } from "@/components/export-buttons";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/history")({
   head: () => ({
@@ -71,6 +72,7 @@ type VideoRow = {
   metadata_json: unknown;
   subtitle_srt: string | null;
   status?: Status;
+  audio_path?: string | null;
 };
 
 type SortKey = "created_at" | "video_name" | "length";
