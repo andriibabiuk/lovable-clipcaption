@@ -64,8 +64,9 @@ function SettingsPage() {
   const subFn = useServerFn(getMySubscription);
   const sub = useQuery({ queryKey: ["my-subscription"], queryFn: () => subFn() });
 
+  const updateNameFn = useServerFn(updateProfileName);
   const saveName = useMutation({
-    mutationFn: (displayName: string) => useServerFn(updateProfileName)({ data: { displayName } }),
+    mutationFn: (displayName: string) => updateNameFn({ data: { displayName } }),
     onSuccess: () => toast.success("Name updated"),
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
