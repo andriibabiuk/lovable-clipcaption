@@ -145,9 +145,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             ))}
             <div className="pt-2 border-t flex items-center justify-between">
               <div className="flex flex-col min-w-0">
-                <span className="text-sm text-foreground truncate">
-                  {profile.name ?? profile.email}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-foreground truncate">
+                    {profile.name ?? profile.email}
+                  </span>
+                  {quota && (
+                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                      {quota.tier}
+                    </span>
+                  )}
+                </div>
                 {quota && (
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {quota.monthly_limit == null
