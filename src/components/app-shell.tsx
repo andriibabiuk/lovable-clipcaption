@@ -1,8 +1,12 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import {display the limitation under the user's name in the navbar on both desktop and mobile.
-
-Done — the navbar now shows the generation quota directly under the user's name in both desktop and mobile views.
+import { useEffect, useState } from "react";
+import { Moon, Sun, Menu, X, Settings } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { useTheme } from "@/components/theme-provider";
+import { useUserQuota } from "@/hooks/use-role";
+import { toast } from "sonner";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
