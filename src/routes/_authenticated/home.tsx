@@ -9,16 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UploadCloud, X, Copy, Download, CheckCircle2 } from "lucide-react";
+import { UploadCloud, X, Copy, Download, CheckCircle2, Languages } from "lucide-react";
 import { captureThumbnail } from "@/lib/thumbnail";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserQuota } from "@/hooks/use-role";
@@ -57,26 +50,23 @@ type QueuedFile = {
   stage: Stage;
   progress: number;
   transcript?: string;
+  detectedLanguage?: string | null;
   error?: string;
 };
 
-const LANGUAGES = ["English", "Spanish", "French", "German", "Portuguese", "Japanese", "Italian", "Dutch"];
-const LANGUAGE_CODES: Record<string, string> = {
-  English: "en",
-  Spanish: "es",
-  French: "fr",
-  German: "de",
-  Portuguese: "pt",
-  Japanese: "ja",
-  Italian: "it",
-  Dutch: "nl",
-};
+function prettyLanguage(lang?: string | null): string {
+  if (!lang) return "";
+  const s = lang.trim();
+  if (!s) return "";
+  // Whisper returns full names ("english") or ISO codes ("en").
+  if (s.length <= 3) return s.toUpperCase();
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
 
 function HomePage() {
   const [files, setFiles] = useState<QueuedFile[]>([]);
   const [creator, setCreator] = useState("");
   const [topic, setTopic] = useState("");
-  const [language, setLanguage] = useState("English");
   const [keywords, setKeywords] = useState("");
   const [output, setOutput] = useState<{
     videoName: string;
@@ -150,15 +140,15 @@ function HomePage() {
       const parts: string[] = [];
       for (let i = 0; i < chunks.length; i++) {
         const b64 = await blobToBase64(chunks[i]);
-        const { text } = await transcribeFn({
+        const { text, language: detected } = await transcribeFn({
           data: {
             audioBase64: b64,
             mimeType,
             filename: `${filename.replace(/\.ogg$/, "")}-${i}.ogg`,
-            language: LANGUAGE_CODES[language],
           },
         });
         parts.push(text);
+        if (i === 0 && detected) update({ detectedLanguage: detected });
         update({ progress: Math.round(55 + ((i + 1) / chunks.length) * 40) });
       }
       const transcript = parts.join(" ").trim();
@@ -173,12 +163,13 @@ function HomePage() {
   const generate = useMutation({
     mutationFn: async (target: QueuedFile) => {
       const kw = keywords.split(",").map((s) => s.trim()).filter(Boolean);
+      const detected = prettyLanguage(target.detectedLanguage) || "English";
       const { row } = await generateFn({
         data: {
           videoName: target.name,
           creator,
           topic,
-          language,
+          language: detected,
           keywords: kw,
           thumbnailDataUrl: target.thumbnail,
           transcript: target.transcript ?? "",
@@ -280,6 +271,12 @@ function HomePage() {
                     <p className={"mt-0.5 text-xs " + (f.stage === "Failed" ? "text-destructive" : "text-muted-foreground")}>
                       {f.stage === "Failed" && f.error ? f.error : f.stage}
                     </p>
+                    {f.detectedLanguage && f.stage !== "Failed" && (
+                      <p className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1">
+                        <Languages className="h-3 w-3" />
+                        Detected language: {prettyLanguage(f.detectedLanguage)}
+                      </p>
+                    )}
                     <Progress value={f.progress} className="mt-2 h-1.5" />
                   </div>
                   {f.stage === "Ready" && (
@@ -305,19 +302,14 @@ function HomePage() {
                   <Input id="topic" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. 5-minute pasta recipe" className="mt-1" />
                 </div>
                 <div>
-                  <Label>Language</Label>
-                  <Select value={language} onValueChange={setLanguage}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {LANGUAGES.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
                   <Label htmlFor="keywords">Keywords (comma-separated)</Label>
                   <Input id="keywords" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="cooking, pasta, quick" className="mt-1" />
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Languages className="h-3.5 w-3.5" />
+                Language is auto-detected from the video's audio — transcription and metadata are generated in the spoken language.
+              </p>
               {limitReached && (
                 <p className="text-sm text-destructive">
                   Monthly generation limit reached.{" "}
@@ -355,7 +347,7 @@ function HomePage() {
             <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground list-disc pl-4">
               <li>Add specific keywords for sharper hashtags.</li>
               <li>Describe your topic in one clear sentence.</li>
-              <li>Pick the language your audience speaks.</li>
+              <li>Language is detected automatically — no need to pick.</li>
             </ul>
           </div>
 
