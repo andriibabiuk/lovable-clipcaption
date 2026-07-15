@@ -1,7 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Menu, X } from "lucide-react";
+import { Moon, Sun, Menu, X, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,10 +44,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const isAdmin = quota?.tier === "admin";
-  const tabs: Array<{ to: "/home" | "/history" | "/settings" | "/admin"; label: string; show: boolean }> = [
+  const tabs: Array<{ to: "/home" | "/history" | "/admin"; label: string; show: boolean }> = [
     { to: "/home", label: "Home", show: true },
     { to: "/history", label: "History", show: true },
-    { to: "/settings", label: "Settings", show: true },
     { to: "/admin", label: "Admin", show: isAdmin },
   ];
 
@@ -101,6 +100,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button variant="ghost" size="icon" asChild aria-label="Settings">
+              <Link to="/settings">
+                <Settings className="h-4 w-4" />
+              </Link>
             </Button>
             <div className="hidden sm:flex items-center gap-2 pl-2 border-l">
               <div className="h-8 w-8 rounded-full bg-secondary text-foreground flex items-center justify-center text-xs font-medium">
