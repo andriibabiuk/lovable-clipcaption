@@ -223,9 +223,9 @@ function HomePage() {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <section>
-            <h1 className="text-2xl font-semibold tracking-tight">Upload a video</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Upload a video or audio file</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              MP4, MOV, or AVI. Files are never stored — only your generated metadata is saved.
+              Video (MP4, MOV, AVI) or audio (MP3, WAV, M4A, AAC, FLAC, OGG). Files are never stored — only your generated metadata is saved.
             </p>
           </section>
 
@@ -247,15 +247,15 @@ function HomePage() {
             }
           >
             <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">Drop videos here or click to browse</p>
+            <p className="mt-3 text-sm font-medium">Drop videos or audio files here, or click to browse</p>
             <p className="text-xs text-muted-foreground mt-1">Batch upload supported</p>
             <p className="text-xs text-muted-foreground mt-2 max-w-sm mx-auto">
-              We do not store or play your videos. Only a single-frame thumbnail is extracted so you can identify the file.
+              Files are optimized in your browser to a small speech-only audio stream before transcription. Nothing is stored — only a single-frame thumbnail (for videos) is kept so you can identify the file.
             </p>
             <input
               ref={inputRef}
               type="file"
-              accept="video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi"
+              accept="video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi,audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.oga,.opus"
               multiple
               className="hidden"
               onChange={(e) => {
