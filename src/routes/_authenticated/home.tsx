@@ -137,38 +137,20 @@ function HomePage() {
 
       // 3. Chunk and transcribe (~10MB each, well under Whisper's 25MB limit).
       update({ progress: 55, stage: "Transcribing audio" });
-      const chunks = chunkBlob(blob, 10 * 1024 * 1024);
-      const parts: string[] = [];
-      const allSegments: Array<{ start: number; end: number; text: string }> = [];
-      let timeOffset = 0;
-      for (let i = 0; i < chunks.length; i++) {
-        const b64 = await blobToBase64(chunks[i]);
-        const { text, language: detected, duration, segments } = await transcribeFn({
-          data: {
-            audioBase64: b64,
-            mimeType,
-            filename: `${filename.replace(/\.ogg$/, "")}-${i}.ogg`,
-          },
-        });
-        parts.push(text);
-        for (const s of segments) {
-          allSegments.push({
-            start: s.start + timeOffset,
-            end: s.end + timeOffset,
-            text: s.text,
-          });
-        }
-        // Advance offset by this chunk's audio duration for correct cross-chunk timings.
-        if (typeof duration === "number" && duration > 0) {
-          timeOffset += duration;
-        } else if (segments.length > 0) {
-          timeOffset = Math.max(timeOffset, allSegments[allSegments.length - 1].end);
-        }
-        if (i === 0 && detected) update({ detectedLanguage: detected });
-        update({ progress: Math.round(55 + ((i + 1) / chunks.length) * 40) });
+      if (blob.size > 25 * 1024 * 1024) {
+        throw new Error("Audio track too large for a single transcription request. Try a shorter video.");
       }
-      const transcript = parts.join(" ").trim();
-      update({ progress: 100, stage: "Ready", transcript, segments: allSegments });
+      const b64 = await blobToBase64(blob);
+      const { text, language: detected, segments } = await transcribeFn({
+        data: { audioBase64: b64, mimeType, filename },
+      });
+      if (detected) update({ detectedLanguage: detected });
+      update({
+        progress: 100,
+        stage: "Ready",
+        transcript: text.trim(),
+        segments,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Processing failed";
       update({ stage: "Failed", error: msg });
