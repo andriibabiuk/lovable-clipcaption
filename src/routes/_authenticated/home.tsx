@@ -23,6 +23,7 @@ import { captureThumbnail } from "@/lib/thumbnail";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserQuota } from "@/hooks/use-role";
 import { generateMetadata, listMyMetadata } from "@/lib/video.functions";
+import { transcribeAudioChunk } from "@/lib/transcribe.functions";
 import {
   buildCombinedText,
   buildCsv,
@@ -41,7 +42,12 @@ export const Route = createFileRoute("/_authenticated/home")({
   component: HomePage,
 });
 
-type Stage = "Uploading" | "Transcribing audio" | "Analyzing content" | "Ready";
+type Stage =
+  | "Reading video"
+  | "Extracting audio"
+  | "Transcribing audio"
+  | "Ready"
+  | "Failed";
 
 type QueuedFile = {
   id: string;
@@ -50,6 +56,8 @@ type QueuedFile = {
   thumbnail: string | null;
   stage: Stage;
   progress: number;
+  transcript?: string;
+  error?: string;
 };
 
 const LANGUAGES = ["English", "Spanish", "French", "German", "Portuguese", "Japanese", "Italian", "Dutch"];
@@ -72,6 +80,7 @@ function HomePage() {
   const qc = useQueryClient();
   const generateFn = useServerFn(generateMetadata);
   const listFn = useServerFn(listMyMetadata);
+  const transcribeFn = useServerFn(transcribeAudioChunk);
 
   const recent = useQuery({
     queryKey: ["my-videos"],
@@ -103,7 +112,7 @@ function HomePage() {
       file: f,
       name: f.name,
       thumbnail: null,
-      stage: "Uploading",
+      stage: "Reading video",
       progress: 5,
     }));
     setFiles((prev) => [...prev, ...queued]);
@@ -114,13 +123,36 @@ function HomePage() {
     const update = (patch: Partial<QueuedFile>) =>
       setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
 
-    // Simulate stages while we grab a thumbnail (no upload; nothing persisted).
-    await new Promise((r) => setTimeout(r, 400));
-    update({ progress: 30, stage: "Transcribing audio" });
-    const thumb = await captureThumbnail(file);
-    update({ thumbnail: thumb, progress: 65, stage: "Analyzing content" });
-    await new Promise((r) => setTimeout(r, 500));
-    update({ progress: 100, stage: "Ready" });
+    try {
+      // 1. Thumbnail (from video element — no upload).
+      const thumb = await captureThumbnail(file);
+      update({ thumbnail: thumb, progress: 10, stage: "Extracting audio" });
+
+      // 2. Extract audio via ffmpeg.wasm (browser only).
+      const { extractAudio, chunkBlob, blobToBase64 } = await import("@/lib/audio-extract.client");
+      const { blob, mimeType, filename } = await extractAudio(file, ({ ratio, stage }) => {
+        update({ progress: Math.round(10 + ratio * 40), stage: stage === "Loading audio engine" ? "Extracting audio" : "Extracting audio" });
+      });
+
+      // 3. Chunk and transcribe (~10MB each, well under Whisper's 25MB limit).
+      update({ progress: 55, stage: "Transcribing audio" });
+      const chunks = chunkBlob(blob, 10 * 1024 * 1024);
+      const parts: string[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        const b64 = await blobToBase64(chunks[i]);
+        const { text } = await transcribeFn({
+          data: { audioBase64: b64, mimeType, filename: `${filename.replace(/\.ogg$/, "")}-${i}.ogg` },
+        });
+        parts.push(text);
+        update({ progress: Math.round(55 + ((i + 1) / chunks.length) * 40) });
+      }
+      const transcript = parts.join(" ").trim();
+      update({ progress: 100, stage: "Ready", transcript });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Processing failed";
+      update({ stage: "Failed", error: msg });
+      toast.error(msg);
+    }
   }
 
   const generate = useMutation({
@@ -134,6 +166,7 @@ function HomePage() {
           language,
           keywords: kw,
           thumbnailDataUrl: target.thumbnail,
+          transcript: target.transcript ?? "",
         },
       });
       return row as unknown as { video_name: string; metadata_json: PlatformMetadata; subtitle_srt: string };

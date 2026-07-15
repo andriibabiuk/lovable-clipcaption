@@ -9,6 +9,7 @@ const generateSchema = z.object({
   language: z.string().max(50).optional().default("English"),
   keywords: z.array(z.string().max(60)).max(30).default([]),
   thumbnailDataUrl: z.string().max(200000).nullable().optional(),
+  transcript: z.string().max(500000).optional().default(""),
 });
 
 function buildMockMetadata(input: z.infer<typeof generateSchema>) {
@@ -46,6 +47,31 @@ function buildMockMetadata(input: z.infer<typeof generateSchema>) {
   };
 }
 
+function transcriptToSrt(transcript: string, language: string): string {
+  const clean = transcript.trim();
+  if (!clean) return buildMockSrt("your video", language);
+  // Split transcript into ~10-word segments, 4s each.
+  const words = clean.split(/\s+/);
+  const segments: string[] = [];
+  for (let i = 0; i < words.length; i += 10) {
+    segments.push(words.slice(i, i + 10).join(" "));
+  }
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const fmt = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${pad(h)}:${pad(m)}:${pad(sec)},000`;
+  };
+  return segments
+    .map((text, i) => {
+      const start = i * 4;
+      const end = start + 4;
+      return `${i + 1}\n${fmt(start)} --> ${fmt(end)}\n${text}\n`;
+    })
+    .join("\n");
+}
+
 function buildMockSrt(topic: string, language: string): string {
   const lines = [
     `Welcome — today we're talking about ${topic}.`,
@@ -65,6 +91,62 @@ function buildMockSrt(topic: string, language: string): string {
     .join("\n");
 }
 
+async function generateMetadataWithAI(
+  input: z.infer<typeof generateSchema>,
+): Promise<ReturnType<typeof buildMockMetadata> | null> {
+  const key = process.env.LOVABLE_API_KEY;
+  if (!key) return null;
+  const transcript = input.transcript.trim().slice(0, 12000);
+  if (!transcript) return null;
+
+  const system =
+    "You generate social media metadata for a video based on its transcript. " +
+    "Return STRICT JSON matching the requested schema, no prose. Hashtags are single words prefixed with '#'.";
+  const user = `Video name: ${input.videoName}
+Creator: ${input.creator || "(unknown)"}
+Topic hint: ${input.topic || "(infer from transcript)"}
+Language: ${input.language}
+User keywords: ${input.keywords.join(", ") || "(none)"}
+
+Transcript:
+"""
+${transcript}
+"""
+
+Return JSON with this exact shape:
+{
+  "youtube": { "title": string (<=100 chars), "description": string, "hashtags": string[] (<=12) },
+  "instagram": { "caption": string, "hashtags": string[] (<=15) },
+  "tiktok": { "title": string, "description": string, "hashtags": string[] (<=12) }
+}`;
+
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Lovable-API-Key": key,
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-5-mini",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) return null;
+    const parsed = JSON.parse(content);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export const generateMetadata = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => generateSchema.parse(input))
@@ -74,8 +156,11 @@ export const generateMetadata = createServerFn({ method: "POST" })
     if (quotaErr) throw new Error(quotaErr.message);
     const quota = Array.isArray(quotaRows) ? quotaRows[0] : quotaRows;
 
-    const metadata = buildMockMetadata(data);
-    const srt = buildMockSrt(data.topic || data.videoName, data.language);
+    const aiMetadata = await generateMetadataWithAI(data);
+    const metadata = aiMetadata ?? buildMockMetadata(data);
+    const srt = data.transcript
+      ? transcriptToSrt(data.transcript, data.language)
+      : buildMockSrt(data.topic || data.videoName, data.language);
 
     const { data: row, error } = await context.supabase
       .from("video_metadata")
@@ -88,6 +173,7 @@ export const generateMetadata = createServerFn({ method: "POST" })
         keywords: data.keywords,
         metadata_json: metadata,
         subtitle_srt: srt,
+        transcript: data.transcript || null,
         status: "completed",
       })
       .select("*")
