@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AppShell } from "@/components/app-shell";
@@ -33,12 +33,13 @@ import { toast } from "sonner";
 import { Download, Trash2, Search, FileText, Copy } from "lucide-react";
 import { deleteMetadata, listMyMetadata } from "@/lib/video.functions";
 import {
+  baseFilename,
   buildCombinedText,
-  buildCsv,
   downloadBlob,
-  safeFilename,
+  parsePlatformMetadata,
   type PlatformMetadata,
 } from "@/lib/export";
+import { ExportButtons } from "@/components/export-buttons";
 
 export const Route = createFileRoute("/_authenticated/history")({
   head: () => ({
@@ -95,6 +96,9 @@ function HistoryPage() {
     },
   });
 
+  const handleDelete = useCallback((id: string) => del.mutate(id), [del]);
+  const handleOpenDetail = useCallback((row: VideoRow) => setDetailItem(row), []);
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     const list = (items.data ?? []) as VideoRow[];
@@ -137,120 +141,14 @@ function HistoryPage() {
         )}
 
         <div className="grid gap-4">
-          {filtered.map((r) => {
-            const meta = r.metadata_json as unknown as PlatformMetadata | undefined;
-            const base = safeFilename(r.video_name.replace(/\.[a-z0-9]+$/i, ""));
-            const status = (r.status ?? "completed") as Status;
-            const hasMeta = status === "completed" && meta;
-
-            return (
-              <Card key={r.id} className="overflow-hidden">
-                <CardHeader className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="h-14 w-24 rounded-md bg-secondary overflow-hidden shrink-0 border">
-                      {r.thumbnail_url ? (
-                        <img src={r.thumbnail_url} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                          <FileText className="h-5 w-5" />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                        <h3 className="text-sm font-medium truncate">{r.video_name}</h3>
-                        <Badge variant={statusBadgeVariant(status)} className="w-fit text-[10px] uppercase">
-                          {status}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">
-                        {new Date(r.created_at).toLocaleString()} · {r.language ?? "—"}
-                      </p>
-                    </div>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="px-4 pb-4 pt-0">
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!hasMeta}
-                      onClick={() =>
-                        hasMeta && downloadBlob(`${base}-metadata.txt`, "text/plain", buildCombinedText(r.video_name, meta))
-                      }
-                    >
-                      <Download className="h-4 w-4 mr-1.5" /> .txt
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!hasMeta}
-                      onClick={() =>
-                        hasMeta &&
-                        downloadBlob(
-                          `${base}-metadata.json`,
-                          "application/json",
-                          JSON.stringify({ video: r.video_name, metadata: meta }, null, 2),
-                        )
-                      }
-                    >
-                      <Download className="h-4 w-4 mr-1.5" /> JSON
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!hasMeta}
-                      onClick={() => hasMeta && downloadBlob(`${base}-metadata.csv`, "text/csv", buildCsv(r.video_name, meta))}
-                    >
-                      <Download className="h-4 w-4 mr-1.5" /> CSV
-                    </Button>
-                    {r.subtitle_srt && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => downloadBlob(`${base}.srt`, "application/x-subrip", r.subtitle_srt!)}
-                      >
-                        <Download className="h-4 w-4 mr-1.5" /> SRT
-                      </Button>
-                    )}
-
-                    <div className="flex-1" />
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!hasMeta}
-                      onClick={() => hasMeta && setDetailItem(r)}
-                    >
-                      Details
-                    </Button>
-
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4 mr-1.5" /> Delete
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This removes the saved metadata and subtitles for "{r.video_name}". This cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => del.mutate(r.id)}>Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {filtered.map((r) => (
+            <HistoryCard
+              key={r.id}
+              row={r}
+              onOpenDetail={handleOpenDetail}
+              onDelete={handleDelete}
+            />
+          ))}
         </div>
       </div>
 
@@ -259,11 +157,100 @@ function HistoryPage() {
   );
 }
 
+const HistoryCard = memo(function HistoryCard({
+  row,
+  onOpenDetail,
+  onDelete,
+}: {
+  row: VideoRow;
+  onOpenDetail: (row: VideoRow) => void;
+  onDelete: (id: string) => void;
+}) {
+  // Derive presentation data once per row (not once per HistoryPage render).
+  const { meta, status, hasMeta } = useMemo(() => {
+    const status = (row.status ?? "completed") as Status;
+    const meta = status === "completed" ? parsePlatformMetadata(row.metadata_json) : null;
+    return { meta, status, hasMeta: !!meta };
+  }, [row.metadata_json, row.status]);
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="h-14 w-24 rounded-md bg-secondary overflow-hidden shrink-0 border">
+            {row.thumbnail_url ? (
+              <img src={row.thumbnail_url} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                <FileText className="h-5 w-5" />
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+              <h3 className="text-sm font-medium truncate">{row.video_name}</h3>
+              <Badge variant={statusBadgeVariant(status)} className="w-fit text-[10px] uppercase">
+                {status}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
+              {new Date(row.created_at).toLocaleString()} · {row.language ?? "—"}
+            </p>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="px-4 pb-4 pt-0">
+        <div className="flex flex-wrap gap-2">
+          <ExportButtons
+            videoName={row.video_name}
+            metadata={meta}
+            srt={row.subtitle_srt}
+            disabled={!hasMeta}
+          />
+
+          <div className="flex-1" />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!hasMeta}
+            onClick={() => hasMeta && onOpenDetail(row)}
+          >
+            Details
+          </Button>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                <Trash2 className="h-4 w-4 mr-1.5" /> Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This removes the saved metadata and subtitles for "{row.video_name}". This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => onDelete(row.id)}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
+
 function MetadataDialog({ item, onClose }: { item: VideoRow | null; onClose: () => void }) {
   if (!item) return null;
   const video = item;
-  const meta = video.metadata_json as unknown as PlatformMetadata;
-  const base = safeFilename(video.video_name.replace(/\.[a-z0-9]+$/i, ""));
+  const meta = parsePlatformMetadata(video.metadata_json);
+  const base = baseFilename(video.video_name);
 
   const keywords = video.keywords?.filter(Boolean).join(", ") ?? "";
   const summary = `This video explores ${video.topic || "the main topic"}, covering key strategies, practical tips, and actionable takeaways for content creators and marketers.`;
