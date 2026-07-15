@@ -34,8 +34,8 @@ export const Route = createFileRoute("/_authenticated/home")({
 });
 
 type Stage =
-  | "Reading video"
-  | "Extracting audio"
+  | "Reading file"
+  | "Optimizing audio"
   | "Transcribing audio"
   | "Ready"
   | "Failed";
@@ -96,9 +96,18 @@ function HomePage() {
   }, [profile?.name]);
 
   const addFiles = useCallback((list: FileList | File[]) => {
-    const accepted = Array.from(list).filter((f) => /video\/(mp4|quicktime|x-msvideo)|\.mov|\.mp4|\.avi/i.test(f.type + " " + f.name));
+    // Accept video AND standalone audio — both go through the shared
+    // normalizeToOpus() pre-processing step before Whisper.
+    const accepted = Array.from(list).filter((f) => {
+      const tag = (f.type + " " + f.name).toLowerCase();
+      return (
+        /video\/(mp4|quicktime|x-msvideo)|\.mov|\.mp4|\.avi/.test(tag) ||
+        /audio\//.test(tag) ||
+        /\.(mp3|wav|m4a|aac|flac|ogg|oga|opus|wma)$/i.test(f.name)
+      );
+    });
     if (!accepted.length) {
-      toast.error("Only MP4, MOV, or AVI files are supported.");
+      toast.error("Supported files: MP4, MOV, AVI, MP3, WAV, M4A, AAC, FLAC, OGG.");
       return;
     }
     const queued: QueuedFile[] = accepted.map((f) => ({
@@ -106,7 +115,7 @@ function HomePage() {
       file: f,
       name: f.name,
       thumbnail: null,
-      stage: "Reading video",
+      stage: "Reading file",
       progress: 5,
     }));
     setFiles((prev) => [...prev, ...queued]);
@@ -118,14 +127,24 @@ function HomePage() {
       setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
 
     try {
-      // 1. Thumbnail (from video element — no upload).
-      const thumb = await captureThumbnail(file);
-      update({ thumbnail: thumb, progress: 10, stage: "Extracting audio" });
+      // 1. Thumbnail — only meaningful for video. Audio uploads keep a blank tile.
+      const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|avi)$/i.test(file.name);
+      if (isVideo) {
+        try {
+          const thumb = await captureThumbnail(file);
+          update({ thumbnail: thumb });
+        } catch {
+          // Non-fatal — continue without a thumbnail.
+        }
+      }
+      update({ progress: 10, stage: "Optimizing audio" });
 
-      // 2. Extract audio via ffmpeg.wasm (browser only).
-      const { extractAudio, blobToBase64 } = await import("@/lib/audio-extract");
-      const { blob, mimeType, filename } = await extractAudio(file, ({ ratio, stage }) => {
-        update({ progress: Math.round(10 + ratio * 40), stage: stage === "Loading audio engine" ? "Extracting audio" : "Extracting audio" });
+      // 2. Normalize to 16kHz mono Opus via the SHARED conversion path
+      // (ffmpeg.wasm in the browser). Same code path for video AND audio —
+      // Whisper always receives the same minimal format.
+      const { normalizeToOpus, blobToBase64 } = await import("@/lib/audio-extract");
+      const { blob, mimeType, filename } = await normalizeToOpus(file, ({ ratio }) => {
+        update({ progress: Math.round(10 + ratio * 40), stage: "Optimizing audio" });
       });
 
       // 3. Transcribe the full extracted audio in a single Whisper request
@@ -138,6 +157,9 @@ function HomePage() {
       const { text, language: detected, segments } = await transcribeFn({
         data: { audioBase64: b64, mimeType, filename },
       });
+      // The normalized Opus blob is transient — drop the reference now that
+      // transcription has returned so it can be garbage-collected. No copy
+      // of the media is retained past this point.
       if (detected) update({ detectedLanguage: detected });
       update({
         progress: 100,
@@ -201,9 +223,9 @@ function HomePage() {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <section>
-            <h1 className="text-2xl font-semibold tracking-tight">Upload a video</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Upload a video or audio file</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              MP4, MOV, or AVI. Files are never stored — only your generated metadata is saved.
+              Video (MP4, MOV, AVI) or audio (MP3, WAV, M4A, AAC, FLAC, OGG). Files are never stored — only your generated metadata is saved.
             </p>
           </section>
 
@@ -225,15 +247,15 @@ function HomePage() {
             }
           >
             <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">Drop videos here or click to browse</p>
+            <p className="mt-3 text-sm font-medium">Drop videos or audio files here, or click to browse</p>
             <p className="text-xs text-muted-foreground mt-1">Batch upload supported</p>
             <p className="text-xs text-muted-foreground mt-2 max-w-sm mx-auto">
-              We do not store or play your videos. Only a single-frame thumbnail is extracted so you can identify the file.
+              Files are optimized in your browser to a small speech-only audio stream before transcription. Nothing is stored — only a single-frame thumbnail (for videos) is kept so you can identify the file.
             </p>
             <input
               ref={inputRef}
               type="file"
-              accept="video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi"
+              accept="video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi,audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.oga,.opus"
               multiple
               className="hidden"
               onChange={(e) => {

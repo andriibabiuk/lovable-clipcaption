@@ -46,26 +46,58 @@ async function runFFmpeg(ff: FFmpeg, args: string[]) {
 
 export type ExtractProgress = (info: { ratio: number; stage: string }) => void;
 
+export type NormalizedAudio = {
+  blob: Blob;
+  mimeType: string;
+  filename: string;
+  /** Diagnostic metadata — logged internally, not shown to end users. */
+  stats: {
+    originalName: string;
+    originalType: string;
+    originalSize: number;
+    convertedSize: number;
+    kind: "video" | "audio";
+  };
+};
+
+function detectKind(file: File): "video" | "audio" {
+  const t = (file.type || "").toLowerCase();
+  if (t.startsWith("video/")) return "video";
+  if (t.startsWith("audio/")) return "audio";
+  // Fall back to extension sniffing when the browser omits a MIME type.
+  return /\.(mp3|wav|m4a|aac|flac|ogg|oga|opus|wma)$/i.test(file.name) ? "audio" : "video";
+}
+
 /**
- * Extract audio from a video File into a compact Opus/Ogg blob at 16kHz mono.
- * The video is never uploaded — this runs entirely in the browser tab.
+ * Normalize any uploaded media (video OR standalone audio) into a compact,
+ * transcription-optimized Opus/Ogg blob at 16kHz mono, ~24kbps.
+ *
+ * This is the single shared pre-processing step for every upload path — video
+ * or audio — so Whisper always receives a consistent minimal input. The
+ * original file never leaves the browser tab; only the normalized Opus blob
+ * is sent onward, and it is discarded once transcription returns.
  */
-export async function extractAudio(
+export async function normalizeToOpus(
   file: File,
   onProgress?: ExtractProgress,
-): Promise<{ blob: Blob; mimeType: string; filename: string }> {
+): Promise<NormalizedAudio> {
   onProgress?.({ ratio: 0, stage: "Loading audio engine" });
   const ff = await getFFmpeg();
 
-  const inName = "in" + (file.name.match(/\.[a-z0-9]+$/i)?.[0] ?? ".mp4");
+  const kind = detectKind(file);
+  const ext = file.name.match(/\.[a-z0-9]+$/i)?.[0] ?? (kind === "audio" ? ".bin" : ".mp4");
+  const inName = "in" + ext;
   const outName = "out.ogg";
 
   ff.on("progress", ({ progress }) => {
-    onProgress?.({ ratio: Math.min(0.95, Math.max(0.05, progress)), stage: "Extracting audio" });
+    onProgress?.({ ratio: Math.min(0.95, Math.max(0.05, progress)), stage: "Optimizing audio" });
   });
 
   try {
     await ff.writeFile(inName, await fetchFile(file));
+    // `-vn` is a no-op for audio-only inputs, so the same command handles both
+    // videos (extract audio track, drop video) and standalone audio files
+    // (downmix + resample + re-encode).
     await runFFmpeg(ff, [
       "-i", inName,
       "-vn",
@@ -76,7 +108,11 @@ export async function extractAudio(
       outName,
     ]);
   } catch (err) {
-    throw new Error(errorMessage(err));
+    // Surface a consistent user-facing message regardless of the underlying
+    // ffmpeg failure (corrupt file, unsupported codec, unreadable stream).
+    const detail = errorMessage(err);
+    console.warn("[normalizeToOpus] conversion failed", { file: file.name, type: file.type, detail });
+    throw new Error("Couldn't process this file — try a different format");
   }
 
   const data = await ff.readFile(outName);
@@ -89,8 +125,25 @@ export async function extractAudio(
   new Uint8Array(buf).set(bytes);
   const blob = new Blob([buf], { type: "audio/ogg" });
   onProgress?.({ ratio: 1, stage: "Audio ready" });
-  return { blob, mimeType: "audio/ogg", filename: "audio.ogg" };
+
+  const stats = {
+    originalName: file.name,
+    originalType: file.type || "(unknown)",
+    originalSize: file.size,
+    convertedSize: blob.size,
+    kind,
+  } as const;
+  // Internal diagnostics only — never surfaced in the UI.
+  console.info("[normalizeToOpus] converted", {
+    ...stats,
+    ratio: file.size > 0 ? +(blob.size / file.size).toFixed(3) : null,
+  });
+
+  return { blob, mimeType: "audio/ogg", filename: "audio.ogg", stats };
 }
+
+/** @deprecated Use `normalizeToOpus` — kept as an alias for older imports. */
+export const extractAudio = normalizeToOpus;
 
 export async function blobToBase64(blob: Blob): Promise<string> {
   const buf = new Uint8Array(await blob.arrayBuffer());
