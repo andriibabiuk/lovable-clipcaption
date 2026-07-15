@@ -6,6 +6,14 @@ import { AppShell } from "@/components/app-shell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -30,8 +38,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Download, Trash2, Search, FileText, Copy } from "lucide-react";
-import { deleteMetadata, listMyMetadata } from "@/lib/video.functions";
+import { Download, Trash2, Search, FileText, Copy, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { deleteMetadata, deleteMetadataBatch, listMyMetadata } from "@/lib/video.functions";
 import {
   baseFilename,
   buildCombinedText,
@@ -65,6 +73,31 @@ type VideoRow = {
   status?: Status;
 };
 
+type SortKey = "created_at" | "video_name" | "length";
+type SortDir = "asc" | "desc";
+
+// Parse the last SRT timestamp (HH:MM:SS,mmm) to get an approximate video length in seconds.
+function srtLengthSeconds(srt: string | null): number {
+  if (!srt) return 0;
+  let last = 0;
+  const re = /(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(srt)) !== null) {
+    const sec = +m[5] * 3600 + +m[6] * 60 + +m[7] + +m[8] / 1000;
+    if (sec > last) last = sec;
+  }
+  return last;
+}
+
+function formatLength(seconds: number): string {
+  if (!seconds) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
 function statusBadgeVariant(status: Status): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case "completed":
@@ -81,9 +114,13 @@ function statusBadgeVariant(status: Status): "default" | "secondary" | "destruct
 function HistoryPage() {
   const [q, setQ] = useState("");
   const [detailItem, setDetailItem] = useState<VideoRow | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>("created_at");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const qc = useQueryClient();
   const listFn = useServerFn(listMyMetadata);
   const delFn = useServerFn(deleteMetadata);
+  const delBatchFn = useServerFn(deleteMetadataBatch);
 
   const items = useQuery({ queryKey: ["my-videos"], queryFn: () => listFn() });
 
@@ -95,20 +132,55 @@ function HistoryPage() {
     },
   });
 
+  const delBatch = useMutation({
+    mutationFn: (ids: string[]) => delBatchFn({ data: { ids } }),
+    onSuccess: (res) => {
+      toast.success(`Deleted ${res.count} item${res.count === 1 ? "" : "s"}`);
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ["my-videos"] });
+    },
+    onError: (e: Error) => toast.error(e.message ?? "Failed to delete"),
+  });
+
   const handleDelete = useCallback((id: string) => del.mutate(id), [del]);
   const handleOpenDetail = useCallback((row: VideoRow) => setDetailItem(row), []);
+  const handleToggle = useCallback((id: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
 
-  const filtered = useMemo(() => {
+  const filtered = useMemo<VideoRow[]>(() => {
     const term = q.trim().toLowerCase();
     const list = (items.data ?? []) as VideoRow[];
-    if (!term) return list;
-    return list.filter(
-      (r) =>
-        r.video_name.toLowerCase().includes(term) ||
-        (r.topic ?? "").toLowerCase().includes(term) ||
-        (r.keywords ?? []).some((k: string) => k.toLowerCase().includes(term)),
-    );
-  }, [items.data, q]);
+    const searched = !term
+      ? list
+      : list.filter(
+          (r) =>
+            r.video_name.toLowerCase().includes(term) ||
+            (r.topic ?? "").toLowerCase().includes(term) ||
+            (r.keywords ?? []).some((k: string) => k.toLowerCase().includes(term)),
+        );
+    const dir = sortDir === "asc" ? 1 : -1;
+    const sorted = [...searched].sort((a, b) => {
+      if (sortKey === "video_name") return a.video_name.localeCompare(b.video_name) * dir;
+      if (sortKey === "length")
+        return (srtLengthSeconds(a.subtitle_srt) - srtLengthSeconds(b.subtitle_srt)) * dir;
+      return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
+    });
+    return sorted;
+  }, [items.data, q, sortKey, sortDir]);
+
+  const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
+  const someSelected = selected.size > 0 && !allSelected;
+
+  function toggleAll() {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(filtered.map((r) => r.id)));
+  }
 
   return (
     <AppShell>
@@ -120,15 +192,79 @@ function HistoryPage() {
           </p>
         </div>
 
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by name, topic, or keyword"
-            className="pl-9"
-          />
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by name, topic, or keyword"
+              className="pl-9"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+              <SelectTrigger className="w-[180px]">
+                <ArrowUpDown className="h-4 w-4 mr-1.5 text-muted-foreground" />
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="created_at">Creation date</SelectItem>
+                <SelectItem value="video_name">Name</SelectItem>
+                <SelectItem value="length">Length</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={`Sort ${sortDir === "asc" ? "ascending" : "descending"}`}
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            >
+              {sortDir === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
+
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between border rounded-md px-3 py-2 bg-muted/40">
+            <div className="flex items-center gap-3">
+              <Checkbox
+                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                onCheckedChange={toggleAll}
+                aria-label="Select all"
+              />
+              <span className="text-sm text-muted-foreground">
+                {selected.size > 0 ? `${selected.size} selected` : "Select all"}
+              </span>
+            </div>
+            {selected.size > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={delBatch.isPending}>
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    Delete selected
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Delete {selected.size} item{selected.size === 1 ? "" : "s"}?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently removes the selected metadata and subtitles. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => delBatch.mutate(Array.from(selected))}>
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
+        )}
 
         {items.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {!items.isLoading && filtered.length === 0 && (
@@ -144,6 +280,8 @@ function HistoryPage() {
             <HistoryCard
               key={r.id}
               row={r}
+              selected={selected.has(r.id)}
+              onToggleSelect={handleToggle}
               onOpenDetail={handleOpenDetail}
               onDelete={handleDelete}
             />
@@ -158,24 +296,36 @@ function HistoryPage() {
 
 const HistoryCard = memo(function HistoryCard({
   row,
+  selected,
+  onToggleSelect,
   onOpenDetail,
   onDelete,
 }: {
   row: VideoRow;
+  selected: boolean;
+  onToggleSelect: (id: string, checked: boolean) => void;
   onOpenDetail: (row: VideoRow) => void;
   onDelete: (id: string) => void;
 }) {
   // Derive presentation data once per row (not once per HistoryPage render).
-  const { meta, status, hasMeta } = useMemo(() => {
+  const { meta, status, hasMeta, lengthLabel } = useMemo(() => {
     const status = (row.status ?? "completed") as Status;
     const meta = status === "completed" ? parsePlatformMetadata(row.metadata_json) : null;
-    return { meta, status, hasMeta: !!meta };
-  }, [row.metadata_json, row.status]);
+    const lengthLabel = formatLength(srtLengthSeconds(row.subtitle_srt));
+    return { meta, status, hasMeta: !!meta, lengthLabel };
+  }, [row.metadata_json, row.status, row.subtitle_srt]);
 
   return (
-    <Card className="overflow-hidden">
+    <Card className={`overflow-hidden ${selected ? "ring-1 ring-primary" : ""}`}>
       <CardHeader className="p-4">
         <div className="flex items-start gap-3">
+          <div className="pt-1">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={(c) => onToggleSelect(row.id, c === true)}
+              aria-label={`Select ${row.video_name}`}
+            />
+          </div>
           <div className="h-14 w-24 rounded-md bg-secondary overflow-hidden shrink-0 border">
             {row.thumbnail_url ? (
               <img src={row.thumbnail_url} alt="" className="h-full w-full object-cover" />
@@ -194,7 +344,7 @@ const HistoryCard = memo(function HistoryCard({
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground truncate mt-0.5">
-              {new Date(row.created_at).toLocaleString()} · {row.language ?? "—"}
+              {new Date(row.created_at).toLocaleString()} · {row.language ?? "—"} · {lengthLabel}
             </p>
           </div>
         </div>
