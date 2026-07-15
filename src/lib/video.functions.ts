@@ -271,10 +271,13 @@ export const generateMetadata = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => generateSchema.parse(input))
   .handler(async ({ data, context }) => {
-    // Enforce quota + increment atomically.
-    const { data: quotaRows, error: quotaErr } = await context.supabase.rpc("record_generation");
-    if (quotaErr) throw new Error(quotaErr.message);
-    const quota = Array.isArray(quotaRows) ? quotaRows[0] : quotaRows;
+    // Pre-check quota so we fail fast without consuming a generation.
+    const { data: quotaCheckRows, error: quotaCheckErr } = await context.supabase.rpc("current_user_quota");
+    if (quotaCheckErr) throw new Error(quotaCheckErr.message);
+    const quotaCheck = Array.isArray(quotaCheckRows) ? quotaCheckRows[0] : quotaCheckRows;
+    if (quotaCheck && quotaCheck.monthly_limit != null && (quotaCheck.remaining ?? 0) <= 0) {
+      throw new Error(`Monthly generation limit reached (${quotaCheck.monthly_limit}).`);
+    }
 
     const [aiMetadata, polishedSrt] = await Promise.all([
       generateMetadataWithAI(data),
@@ -309,6 +312,11 @@ export const generateMetadata = createServerFn({ method: "POST" })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+
+    // Only count a successful generation (metadata delivered to the user).
+    const { data: quotaRows, error: quotaErr } = await context.supabase.rpc("record_generation");
+    if (quotaErr) throw new Error(quotaErr.message);
+    const quota = Array.isArray(quotaRows) ? quotaRows[0] : quotaRows;
 
     return { row, quota, detectedLanguage };
   });
