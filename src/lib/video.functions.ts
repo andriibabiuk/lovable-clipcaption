@@ -134,14 +134,15 @@ async function polishSrtWithAI(
   const system =
     "You are a professional subtitle editor. You receive Whisper transcription segments " +
     "with start/end timestamps (seconds) and must produce subtitle cues optimized for on-screen reading. " +
-    "Rules: preserve original meaning and language; do NOT translate; fix obvious punctuation and casing; " +
+    "Rules: preserve the ORIGINAL spoken language of the segments exactly as-is; NEVER translate to any " +
+    "other language regardless of any language hint provided; fix obvious punctuation and casing; " +
     "merge or split segments so each cue is 1.0-6.0 seconds long with a natural reading pace " +
     "(~17 chars/sec, max ~84 chars total); wrap text into at most 2 lines of ~42 chars each using a single \\n; " +
     "avoid cues shorter than 0.8s; keep timings within the original segment range; " +
     "cues must not overlap and must be strictly ordered. " +
     "Return STRICT JSON: { \"cues\": [ { \"start\": number, \"end\": number, \"text\": string } ] }.";
 
-  const user = `Language: ${language}\nSegments:\n${JSON.stringify(compact)}`;
+  const user = `Language hint (may be wrong — keep the segments' original language): ${language}\nSegments:\n${JSON.stringify(compact)}`;
 
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -202,7 +203,7 @@ function buildMockSrt(topic: string, language: string): string {
 
 async function generateMetadataWithAI(
   input: z.infer<typeof generateSchema>,
-): Promise<PlatformMetadata | null> {
+): Promise<{ metadata: PlatformMetadata; detectedLanguage: string | null } | null> {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) return null;
   const transcript = input.transcript.trim().slice(0, 12000);
@@ -210,11 +211,15 @@ async function generateMetadataWithAI(
 
   const system =
     "You generate social media metadata for a video based on its transcript. " +
-    "Return STRICT JSON matching the requested schema, no prose. Hashtags are single words prefixed with '#'.";
+    "First, detect the primary spoken language of the transcript. " +
+    "Then write EVERY title, description, caption, and hashtag in that SAME language — " +
+    "do NOT translate to English. Hashtags are single words prefixed with '#' (transliterate if the " +
+    "script has no hashtag convention, but keep the language). " +
+    "Return STRICT JSON matching the requested schema, no prose.";
   const user = `Video name: ${input.videoName}
 Creator: ${input.creator || "(unknown)"}
 Topic hint: ${input.topic || "(infer from transcript)"}
-Language: ${input.language}
+Language hint (may be wrong — trust the transcript): ${input.language}
 User keywords: ${input.keywords.join(", ") || "(none)"}
 
 Transcript:
@@ -224,6 +229,7 @@ ${transcript}
 
 Return JSON with this exact shape:
 {
+  "detectedLanguage": string (English name of the detected transcript language, e.g. "Ukrainian"),
   "youtube": { "title": string (<=100 chars), "description": string, "hashtags": string[] (<=12) },
   "instagram": { "caption": string, "hashtags": string[] (<=15) },
   "tiktok": { "title": string, "description": string, "hashtags": string[] (<=12) }
@@ -249,11 +255,13 @@ Return JSON with this exact shape:
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = json.choices?.[0]?.message?.content;
     if (!content) return null;
-    // Validate the AI response shape so malformed JSON falls back to the mock
-    // metadata instead of persisting undefined fields into the database.
-    const parsedJson = JSON.parse(content) as unknown;
+    const parsedJson = JSON.parse(content) as { detectedLanguage?: unknown };
+    const detectedLanguage =
+      typeof parsedJson.detectedLanguage === "string" && parsedJson.detectedLanguage.trim()
+        ? parsedJson.detectedLanguage.trim().slice(0, 50)
+        : null;
     const result = platformMetadataSchema.safeParse(parsedJson);
-    return result.success ? result.data : null;
+    return result.success ? { metadata: result.data, detectedLanguage } : null;
   } catch {
     return null;
   }
@@ -272,14 +280,16 @@ export const generateMetadata = createServerFn({ method: "POST" })
       generateMetadataWithAI(data),
       data.segments.length > 0 ? polishSrtWithAI(data.segments, data.language) : Promise.resolve(null),
     ]);
-    const metadata = aiMetadata ?? buildMockMetadata(data);
+    const metadata = aiMetadata?.metadata ?? buildMockMetadata(data);
+    const detectedLanguage = aiMetadata?.detectedLanguage ?? null;
+    const finalLanguage = detectedLanguage || data.language;
     const srt =
       polishedSrt ??
       (data.segments.length > 0
         ? segmentsToSrt(data.segments)
         : data.transcript
-          ? transcriptToSrt(data.transcript, data.language)
-          : buildMockSrt(data.topic || data.videoName, data.language));
+          ? transcriptToSrt(data.transcript, finalLanguage)
+          : buildMockSrt(data.topic || data.videoName, finalLanguage));
 
     const { data: row, error } = await context.supabase
       .from("video_metadata")
@@ -287,7 +297,7 @@ export const generateMetadata = createServerFn({ method: "POST" })
         user_id: context.userId,
         video_name: data.videoName,
         thumbnail_url: data.thumbnailDataUrl ?? null,
-        language: data.language,
+        language: finalLanguage,
         topic: data.topic,
         keywords: data.keywords,
         metadata_json: metadata,
@@ -300,7 +310,7 @@ export const generateMetadata = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
 
-    return { row, quota };
+    return { row, quota, detectedLanguage };
   });
 
 export const listMyMetadata = createServerFn({ method: "GET" })
