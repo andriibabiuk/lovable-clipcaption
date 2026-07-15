@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Moon, Sun, Menu, X, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/components/theme-provider";
 import { useUserQuota } from "@/hooks/use-role";
 import { toast } from "sonner";
@@ -86,18 +85,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </nav>
           </div>
           <div className="flex items-center gap-2">
-            {quota && (
-              <div className="hidden sm:flex items-center gap-2">
-                <Badge variant="secondary" className="capitalize">
-                  {quota.tier}
-                </Badge>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {quota.monthly_limit == null
-                    ? "Unlimited"
-                    : `${quota.used} / ${quota.monthly_limit} used`}
-                </span>
-              </div>
-            )}
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -110,9 +97,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="h-8 w-8 rounded-full bg-secondary text-foreground flex items-center justify-center text-xs font-medium">
                 {initials || "U"}
               </div>
-              <span className="text-sm text-muted-foreground max-w-[140px] truncate">
-                {profile.name ?? profile.email}
-              </span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm text-foreground max-w-[140px] truncate leading-none">
+                  {profile.name ?? profile.email}
+                </span>
+                {quota && (
+                  <span className="text-xs text-muted-foreground tabular-nums leading-none mt-1">
+                    {quota.monthly_limit == null
+                      ? "Unlimited"
+                      : `${quota.used} / ${quota.monthly_limit} generations`}
+                  </span>
+                )}
+              </div>
               <Button variant="outline" size="sm" onClick={handleSignOut}>
                 Sign out
               </Button>
@@ -141,9 +137,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             ))}
             <div className="pt-2 border-t flex items-center justify-between">
-              <span className="text-sm text-muted-foreground truncate">
-                {profile.name ?? profile.email}
-              </span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm text-foreground truncate">
+                  {profile.name ?? profile.email}
+                </span>
+                {quota && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {quota.monthly_limit == null
+                      ? "Unlimited"
+                      : `${quota.used} / ${quota.monthly_limit} generations`}
+                  </span>
+                )}
+              </div>
               <Button variant="outline" size="sm" onClick={handleSignOut}>
                 Sign out
               </Button>
