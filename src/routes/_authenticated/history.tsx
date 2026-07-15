@@ -12,10 +12,12 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +30,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Download, Trash2, Search, ChevronDown, FileText } from "lucide-react";
+import { Download, Trash2, Search, FileText, Copy } from "lucide-react";
 import { deleteMetadata, listMyMetadata } from "@/lib/video.functions";
 import {
   buildCombinedText,
@@ -50,6 +52,19 @@ export const Route = createFileRoute("/_authenticated/history")({
 
 type Status = "processing" | "completed" | "failed";
 
+type VideoRow = {
+  id: string;
+  created_at: string;
+  video_name: string;
+  thumbnail_url: string | null;
+  language: string | null;
+  topic: string | null;
+  keywords: string[] | null;
+  metadata_json: unknown;
+  subtitle_srt: string | null;
+  status?: Status;
+};
+
 function statusBadgeVariant(status: Status): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case "completed":
@@ -65,7 +80,7 @@ function statusBadgeVariant(status: Status): "default" | "secondary" | "destruct
 
 function HistoryPage() {
   const [q, setQ] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [detailItem, setDetailItem] = useState<VideoRow | null>(null);
   const qc = useQueryClient();
   const listFn = useServerFn(listMyMetadata);
   const delFn = useServerFn(deleteMetadata);
@@ -82,7 +97,7 @@ function HistoryPage() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    const list = items.data ?? [];
+    const list = (items.data ?? []) as VideoRow[];
     if (!term) return list;
     return list.filter(
       (r) =>
@@ -123,10 +138,9 @@ function HistoryPage() {
 
         <div className="grid gap-4">
           {filtered.map((r) => {
-            const meta = r.metadata_json as unknown as PlatformMetadata;
+            const meta = r.metadata_json as unknown as PlatformMetadata | undefined;
             const base = safeFilename(r.video_name.replace(/\.[a-z0-9]+$/i, ""));
-            const status = ((r as unknown as { status?: Status }).status ?? "completed") as Status;
-            const isOpen = openId === r.id;
+            const status = (r.status ?? "completed") as Status;
             const hasMeta = status === "completed" && meta;
 
             return (
@@ -204,13 +218,14 @@ function HistoryPage() {
 
                     <div className="flex-1" />
 
-                    <Collapsible open={isOpen} onOpenChange={(open) => setOpenId(open ? r.id : null)}>
-                      <CollapsibleTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <ChevronDown className={`h-4 w-4 mr-1.5 transition-transform ${isOpen ? "rotate-180" : ""}`} /> Details
-                        </Button>
-                      </CollapsibleTrigger>
-                    </Collapsible>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={!hasMeta}
+                      onClick={() => hasMeta && setDetailItem(r)}
+                    >
+                      Details
+                    </Button>
 
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -232,51 +247,109 @@ function HistoryPage() {
                       </AlertDialogContent>
                     </AlertDialog>
                   </div>
-
-                  <Collapsible open={isOpen} onOpenChange={(open) => setOpenId(open ? r.id : null)}>
-                    <CollapsibleContent className="space-y-3 pt-4 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-                      {status === "processing" && (
-                        <p className="text-sm text-muted-foreground">This video is still being processed.</p>
-                      )}
-                      {status === "failed" && (
-                        <p className="text-sm text-destructive">Processing failed. You can try generating metadata again.</p>
-                      )}
-                      {hasMeta && (
-                        <>
-                          <PlatformBlock title="YouTube" title2={meta.youtube.title} body={meta.youtube.description} tags={meta.youtube.hashtags} />
-                          <PlatformBlock title="Instagram" body={meta.instagram.caption} tags={meta.instagram.hashtags} />
-                          <PlatformBlock title="TikTok" title2={meta.tiktok.title} body={meta.tiktok.description} tags={meta.tiktok.hashtags} />
-                        </>
-                      )}
-                    </CollapsibleContent>
-                  </Collapsible>
                 </CardContent>
               </Card>
             );
           })}
         </div>
       </div>
+
+      <MetadataDialog item={detailItem} onClose={() => setDetailItem(null)} />
     </AppShell>
   );
 }
 
-function PlatformBlock({
-  title,
-  title2,
-  body,
-  tags,
-}: {
-  title: string;
-  title2?: string;
-  body: string;
-  tags: string[];
-}) {
+function MetadataDialog({ item, onClose }: { item: VideoRow | null; onClose: () => void }) {
+  if (!item) return null;
+  const meta = item.metadata_json as unknown as PlatformMetadata;
+  const base = safeFilename(item.video_name.replace(/\.[a-z0-9]+$/i, ""));
+
+  const keywords = item.keywords?.filter(Boolean).join(", ") ?? "";
+  const summary = `This video explores ${item.topic || "the main topic"}, covering key strategies, practical tips, and actionable takeaways for content creators and marketers.`;
+
+  function handleDownloadAll() {
+    downloadBlob(`${base}-metadata.txt`, "text/plain", buildCombinedText(item.video_name, meta));
+  }
+
   return (
-    <div className="border rounded-lg p-4 bg-background">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      {title2 && <p className="mt-1 text-sm font-medium break-words">{title2}</p>}
-      <p className="mt-1 text-sm whitespace-pre-wrap break-words">{body}</p>
-      {tags.length > 0 && <p className="mt-2 text-xs text-muted-foreground break-words">{tags.join(" ")}</p>}
+    <Dialog open={!!item} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <DialogTitle className="text-xl font-semibold tracking-tight">Video Metadata</DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground mt-1">
+                Generated content for your video
+              </DialogDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleDownloadAll} className="shrink-0">
+              <Download className="h-4 w-4 mr-1.5" /> Download All
+            </Button>
+          </div>
+        </DialogHeader>
+
+        <div className="overflow-y-auto px-6 py-5 space-y-6">
+          <MetadataSection title="Original Video">
+            <MetadataField label="Video Name" value={item.video_name} />
+          </MetadataSection>
+
+          <MetadataSection title="Common Metadata">
+            <MetadataField label="Keywords" value={keywords} />
+            <MetadataField label="Transcript Summary" value={summary} />
+          </MetadataSection>
+
+          <MetadataSection title="YouTube">
+            <MetadataField label="Title" value={meta.youtube.title} />
+            <MetadataField label="Description" value={meta.youtube.description} />
+            <MetadataField label="Hashtags" value={meta.youtube.hashtags.join(" ")} />
+          </MetadataSection>
+
+          <MetadataSection title="Instagram">
+            <MetadataField label="Caption" value={meta.instagram.caption} />
+            <MetadataField label="Hashtags" value={meta.instagram.hashtags.join(" ")} />
+          </MetadataSection>
+
+          <MetadataSection title="TikTok">
+            <MetadataField label="Title" value={meta.tiktok.title} />
+            <MetadataField label="Description" value={meta.tiktok.description} />
+            <MetadataField label="Hashtags" value={meta.tiktok.hashtags.join(" ")} />
+          </MetadataSection>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MetadataSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <h4 className="text-sm font-semibold tracking-tight">{title}</h4>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function MetadataField({ label, value }: { label: string; value: string }) {
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copy} aria-label={`Copy ${label}`}>
+          <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+        </Button>
+      </div>
+      <div className="rounded-md bg-muted/60 px-3 py-2.5 text-sm text-foreground whitespace-pre-wrap break-words">
+        {value || "—"}
+      </div>
     </div>
   );
 }
