@@ -291,7 +291,7 @@ function MetadataDialog({ item, onClose }: { item: VideoRow | null; onClose: () 
 
         <div className="overflow-y-auto px-6 py-5 space-y-6">
           <MetadataSection title="Original Video">
-            <MetadataField label="Video Name" value={item.video_name} />
+            <MetadataField label="Video Name" value={video.video_name} />
           </MetadataSection>
 
           <MetadataSection title="Common Metadata">
