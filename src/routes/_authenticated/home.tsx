@@ -159,15 +159,31 @@ function HomePage() {
       const { text, language: detected, segments } = await transcribeFn({
         data: { audioBase64: b64, mimeType, filename },
       });
-      // The normalized Opus blob is transient — drop the reference now that
-      // transcription has returned so it can be garbage-collected. No copy
-      // of the media is retained past this point.
+      // Upload the optimized Opus blob to private storage so the History
+      // card can offer an inline audio player later. Non-fatal — playback
+      // is a nice-to-have; a failed upload does not block the run.
+      let audioPath: string | null = null;
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const uid = userRes.user?.id;
+        if (uid) {
+          const objectName = `${uid}/${crypto.randomUUID()}.ogg`;
+          const { error: upErr } = await supabase.storage
+            .from("optimized-audio")
+            .upload(objectName, blob, { contentType: mimeType, upsert: false });
+          if (upErr) console.warn("[audio-upload] failed", upErr.message);
+          else audioPath = objectName;
+        }
+      } catch (e) {
+        console.warn("[audio-upload] threw", e);
+      }
       if (detected) update({ detectedLanguage: detected });
       update({
         progress: 100,
         stage: "Ready",
         transcript: text.trim(),
         segments,
+        audioPath,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Processing failed";
