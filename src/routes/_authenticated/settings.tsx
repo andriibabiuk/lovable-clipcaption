@@ -36,10 +36,13 @@ import { Check } from "lucide-react";
 import {
   deleteMyAccount,
   getMySubscription,
-  mockCancelSubscription,
-  mockUpgradeToPremium,
   updateProfileName,
 } from "@/lib/billing.functions";
+import {
+  cancelPremiumSubscription,
+} from "@/lib/payments.functions";
+import { StripeEmbeddedPremiumCheckout } from "@/components/stripe-embedded-checkout";
+import { PaymentTestModeBanner } from "@/components/payment-test-mode-banner";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -83,28 +86,30 @@ function SettingsPage() {
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
-  const upgradeFn = useServerFn(mockUpgradeToPremium);
-  const cancelFn = useServerFn(mockCancelSubscription);
+  const cancelFn = useServerFn(cancelPremiumSubscription);
   const deleteFn = useServerFn(deleteMyAccount);
   const [planOpen, setPlanOpen] = useState(false);
-
-  const upgrade = useMutation({
-    mutationFn: () => upgradeFn(),
-    onSuccess: () => {
-      toast.success("Welcome to Premium!");
-      qc.invalidateQueries();
-      setPlanOpen(false);
-    },
-  });
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const cancel = useMutation({
-    mutationFn: () => cancelFn(),
+    mutationFn: async () => {
+      const { getStripeEnvironment } = await import("@/lib/stripe");
+      const res = await cancelFn({ data: { environment: getStripeEnvironment() } });
+      if ("error" in res) throw new Error(res.error);
+      return res;
+    },
     onSuccess: () => {
       toast.success("Downgraded to Free");
       qc.invalidateQueries();
       setPlanOpen(false);
     },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
+
+  const startCheckout = () => {
+    setPlanOpen(false);
+    setCheckoutOpen(true);
+  };
 
   const del = useMutation({
     mutationFn: () => deleteFn(),
@@ -227,12 +232,8 @@ function SettingsPage() {
                       current={tier === "premium"}
                       cta={
                         tier === "free" ? (
-                          <Button
-                            className="w-full"
-                            onClick={() => upgrade.mutate()}
-                            disabled={upgrade.isPending}
-                          >
-                            {upgrade.isPending ? "Upgrading…" : "Upgrade"}
+                          <Button className="w-full" onClick={startCheckout}>
+                            Upgrade
                           </Button>
                         ) : (
                           <Button className="w-full" disabled>
@@ -246,9 +247,28 @@ function SettingsPage() {
             </Dialog>
           </div>
           <p className="text-xs text-muted-foreground border-t pt-3">
-            Payments are simulated for this preview — no real card required.
+            Payments are securely processed by Stripe.
           </p>
         </section>
+
+        <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+          <DialogContent className="sm:max-w-3xl p-0 overflow-hidden">
+            <DialogHeader className="px-6 pt-6">
+              <DialogTitle>Upgrade to Premium</DialogTitle>
+              <DialogDescription>
+                Complete your payment to unlock 150 generations per month.
+              </DialogDescription>
+            </DialogHeader>
+            <PaymentTestModeBanner />
+            <div className="max-h-[70vh] overflow-y-auto">
+              {checkoutOpen && (
+                <StripeEmbeddedPremiumCheckout
+                  returnUrl={`${window.location.origin}/checkout/return?session_id={CHECKOUT_SESSION_ID}`}
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <section className="border rounded-lg p-6 space-y-4">
           <h2 className="text-sm font-semibold">Appearance</h2>
