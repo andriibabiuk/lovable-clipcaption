@@ -173,10 +173,11 @@ function SettingsPage() {
                 {tier === "admin" && "Unlimited generations"}
               </p>
             </div>
-            {tier !== "admin" && (
-              <Dialog open={planOpen} onOpenChange={setPlanOpen}>
+            <Dialog open={planOpen} onOpenChange={setPlanOpen}>
                 <DialogTrigger asChild>
-                  {tier === "free" ? (
+                  {tier === "admin" ? (
+                    <Button variant="outline">View plans</Button>
+                  ) : tier === "free" ? (
                     <Button>Upgrade to Premium — $10/mo</Button>
                   ) : (
                     <Button variant="outline">Change plan</Button>
@@ -242,8 +243,7 @@ function SettingsPage() {
                     />
                   </div>
                 </DialogContent>
-              </Dialog>
-            )}
+            </Dialog>
           </div>
           <p className="text-xs text-muted-foreground border-t pt-3">
             Payments are simulated for this preview — no real card required.
