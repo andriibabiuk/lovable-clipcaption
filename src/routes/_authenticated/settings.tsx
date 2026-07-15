@@ -127,6 +127,12 @@ function SettingsPage() {
               <Label htmlFor="email">Email</Label>
               <Input id="email" value={email} disabled className="mt-1" />
             </div>
+            <div className="flex items-center justify-between">
+              <Label>Role</Label>
+              <Badge variant="secondary" className="capitalize">
+                {tier}
+              </Badge>
+            </div>
           </div>
         </section>
 
