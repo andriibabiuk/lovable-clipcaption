@@ -19,11 +19,24 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState<string | null>(null);
+  const [profile, setProfile] = useState<{ display_name: string | null; email: string | null } | null>(null);
   const { data: quota, isLoading } = useUserQuota();
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+    async function loadProfile() {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) return;
+
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("display_name, email")
+        .eq("id", userId)
+        .single();
+
+      setProfile(profileData ?? { display_name: userData.user?.email?.split("@")[0] ?? null, email: userData.user?.email ?? null });
+    }
+    loadProfile();
   }, []);
 
   async function handleSignOut() {
@@ -43,7 +56,7 @@ function DashboardPage() {
                 <Link to="/admin">Admin</Link>
               </Button>
             )}
-            <span className="text-sm text-muted-foreground">{email}</span>
+            <span className="text-sm text-muted-foreground">{profile?.display_name ?? profile?.email}</span>
             <Button variant="outline" size="sm" onClick={handleSignOut}>
               Sign out
             </Button>
