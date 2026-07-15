@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AppShell } from "@/components/app-shell";
@@ -11,17 +11,15 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UploadCloud, X, Copy, Download, CheckCircle2, Languages } from "lucide-react";
+import { UploadCloud, X, Copy, CheckCircle2, Languages } from "lucide-react";
 import { captureThumbnail } from "@/lib/thumbnail";
-import { supabase } from "@/integrations/supabase/client";
 import { useUserQuota } from "@/hooks/use-role";
+import { useProfile } from "@/hooks/use-profile";
+import { ExportButtons } from "@/components/export-buttons";
 import { generateMetadata, listMyMetadata } from "@/lib/video.functions";
 import { transcribeAudioChunk } from "@/lib/transcribe.functions";
 import {
-  buildCombinedText,
-  buildCsv,
-  downloadBlob,
-  safeFilename,
+  parsePlatformMetadata,
   type PlatformMetadata,
 } from "@/lib/export";
 
@@ -88,21 +86,16 @@ function HomePage() {
     queryFn: () => listFn(),
   });
 
+  // Prefill the creator name from the shared profile cache (also populated by
+  // AppShell and Settings), avoiding a duplicate Supabase round-trip.
+  const { data: profile } = useProfile();
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      const uid = data.user?.id;
-      if (!uid) return;
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("display_name")
-        .eq("id", uid)
-        .maybeSingle();
-      if (p?.display_name) setCreator(p.display_name);
-    })();
-  }, []);
+    if (profile?.name && !creator) setCreator(profile.name);
+    // Only run when the profile first arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.name]);
 
-  function addFiles(list: FileList | File[]) {
+  const addFiles = useCallback((list: FileList | File[]) => {
     const accepted = Array.from(list).filter((f) => /video\/(mp4|quicktime|x-msvideo)|\.mov|\.mp4|\.avi/i.test(f.type + " " + f.name));
     if (!accepted.length) {
       toast.error("Only MP4, MOV, or AVI files are supported.");
@@ -118,7 +111,7 @@ function HomePage() {
     }));
     setFiles((prev) => [...prev, ...queued]);
     queued.forEach((q) => processFile(q.id, q.file));
-  }
+  }, []);
 
   async function processFile(id: string, file: File) {
     const update = (patch: Partial<QueuedFile>) =>
@@ -135,7 +128,8 @@ function HomePage() {
         update({ progress: Math.round(10 + ratio * 40), stage: stage === "Loading audio engine" ? "Extracting audio" : "Extracting audio" });
       });
 
-      // 3. Chunk and transcribe (~10MB each, well under Whisper's 25MB limit).
+      // 3. Transcribe the full extracted audio in a single Whisper request
+      // (bounded to 25MB — the API's per-request limit).
       update({ progress: 55, stage: "Transcribing audio" });
       if (blob.size > 25 * 1024 * 1024) {
         throw new Error("Audio track too large for a single transcription request. Try a shorter video.");
@@ -174,7 +168,12 @@ function HomePage() {
           segments: target.segments ?? [],
         },
       });
-      return row as unknown as { video_name: string; metadata_json: PlatformMetadata; subtitle_srt: string };
+      const r = row as { video_name: string; metadata_json: unknown; subtitle_srt: string };
+      return {
+        video_name: r.video_name,
+        metadata_json: parsePlatformMetadata(r.metadata_json),
+        subtitle_srt: r.subtitle_srt,
+      };
     },
     onSuccess: (row) => {
       setOutput({
