@@ -6,7 +6,6 @@ const schema = z.object({
   audioBase64: z.string().min(1),
   mimeType: z.string().min(1).max(100),
   filename: z.string().min(1).max(200),
-  language: z.string().max(50).optional(),
 });
 
 export const transcribeAudioChunk = createServerFn({ method: "POST" })
@@ -22,8 +21,9 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
     const formData = new FormData();
     formData.append("file", blob, data.filename);
     formData.append("model", "openai/gpt-4o-transcribe");
-    if (data.language) formData.append("language", data.language);
-    formData.append("response_format", "json");
+    // Omit `language` so Whisper auto-detects the spoken language.
+    // Use verbose_json to receive the detected language code alongside the transcript.
+    formData.append("response_format", "verbose_json");
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
       method: "POST",
@@ -39,6 +39,9 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
       if (res.status === 402) throw new Error("AI credits exhausted. Add credits to continue.");
       throw new Error(`Transcription failed (${res.status}): ${text.slice(0, 200)}`);
     }
-    const json = (await res.json()) as { text?: string };
-    return { text: json.text?.trim() ?? "" };
+    const json = (await res.json()) as { text?: string; language?: string };
+    return {
+      text: json.text?.trim() ?? "",
+      language: json.language?.trim() || null,
+    };
   });
