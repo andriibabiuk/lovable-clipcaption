@@ -1,11 +1,12 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Moon, Sun, Menu, X, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
 import { useUserQuota } from "@/hooks/use-role";
+import { useProfile } from "@/hooks/use-profile";
 import { toast } from "sonner";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -13,28 +14,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { theme, toggle } = useTheme();
   const { data: quota } = useUserQuota();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const [profile, setProfile] = useState<{ name: string | null; email: string | null }>({
-    name: null,
-    email: null,
-  });
+  const { data: profileData } = useProfile();
+  const profile = {
+    name: profileData?.name ?? null,
+    email: profileData?.email ?? null,
+  };
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData.user?.id;
-      if (!uid) return;
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("display_name, email")
-        .eq("id", uid)
-        .maybeSingle();
-      setProfile({
-        name: p?.display_name ?? userData.user?.email?.split("@")[0] ?? null,
-        email: p?.email ?? userData.user?.email ?? null,
-      });
-    })();
-  }, []);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
