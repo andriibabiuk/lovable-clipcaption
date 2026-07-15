@@ -134,14 +134,15 @@ async function polishSrtWithAI(
   const system =
     "You are a professional subtitle editor. You receive Whisper transcription segments " +
     "with start/end timestamps (seconds) and must produce subtitle cues optimized for on-screen reading. " +
-    "Rules: preserve original meaning and language; do NOT translate; fix obvious punctuation and casing; " +
+    "Rules: preserve the ORIGINAL spoken language of the segments exactly as-is; NEVER translate to any " +
+    "other language regardless of any language hint provided; fix obvious punctuation and casing; " +
     "merge or split segments so each cue is 1.0-6.0 seconds long with a natural reading pace " +
     "(~17 chars/sec, max ~84 chars total); wrap text into at most 2 lines of ~42 chars each using a single \\n; " +
     "avoid cues shorter than 0.8s; keep timings within the original segment range; " +
     "cues must not overlap and must be strictly ordered. " +
     "Return STRICT JSON: { \"cues\": [ { \"start\": number, \"end\": number, \"text\": string } ] }.";
 
-  const user = `Language: ${language}\nSegments:\n${JSON.stringify(compact)}`;
+  const user = `Language hint (may be wrong — keep the segments' original language): ${language}\nSegments:\n${JSON.stringify(compact)}`;
 
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
