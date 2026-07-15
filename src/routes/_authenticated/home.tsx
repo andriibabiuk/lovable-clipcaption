@@ -50,6 +50,7 @@ type QueuedFile = {
   stage: Stage;
   progress: number;
   transcript?: string;
+  segments?: Array<{ start: number; end: number; text: string }>;
   detectedLanguage?: string | null;
   error?: string;
 };
@@ -138,9 +139,11 @@ function HomePage() {
       update({ progress: 55, stage: "Transcribing audio" });
       const chunks = chunkBlob(blob, 10 * 1024 * 1024);
       const parts: string[] = [];
+      const allSegments: Array<{ start: number; end: number; text: string }> = [];
+      let timeOffset = 0;
       for (let i = 0; i < chunks.length; i++) {
         const b64 = await blobToBase64(chunks[i]);
-        const { text, language: detected } = await transcribeFn({
+        const { text, language: detected, duration, segments } = await transcribeFn({
           data: {
             audioBase64: b64,
             mimeType,
@@ -148,11 +151,24 @@ function HomePage() {
           },
         });
         parts.push(text);
+        for (const s of segments) {
+          allSegments.push({
+            start: s.start + timeOffset,
+            end: s.end + timeOffset,
+            text: s.text,
+          });
+        }
+        // Advance offset by this chunk's audio duration for correct cross-chunk timings.
+        if (typeof duration === "number" && duration > 0) {
+          timeOffset += duration;
+        } else if (segments.length > 0) {
+          timeOffset = Math.max(timeOffset, allSegments[allSegments.length - 1].end);
+        }
         if (i === 0 && detected) update({ detectedLanguage: detected });
         update({ progress: Math.round(55 + ((i + 1) / chunks.length) * 40) });
       }
       const transcript = parts.join(" ").trim();
-      update({ progress: 100, stage: "Ready", transcript });
+      update({ progress: 100, stage: "Ready", transcript, segments: allSegments });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Processing failed";
       update({ stage: "Failed", error: msg });
@@ -173,6 +189,7 @@ function HomePage() {
           keywords: kw,
           thumbnailDataUrl: target.thumbnail,
           transcript: target.transcript ?? "",
+          segments: target.segments ?? [],
         },
       });
       return row as unknown as { video_name: string; metadata_json: PlatformMetadata; subtitle_srt: string };

@@ -39,9 +39,23 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
       if (res.status === 402) throw new Error("AI credits exhausted. Add credits to continue.");
       throw new Error(`Transcription failed (${res.status}): ${text.slice(0, 200)}`);
     }
-    const json = (await res.json()) as { text?: string; language?: string };
+    const json = (await res.json()) as {
+      text?: string;
+      language?: string;
+      duration?: number;
+      segments?: Array<{ start?: number; end?: number; text?: string }>;
+    };
+    const segments = (json.segments ?? [])
+      .map((s) => ({
+        start: typeof s.start === "number" ? s.start : 0,
+        end: typeof s.end === "number" ? s.end : 0,
+        text: (s.text ?? "").trim(),
+      }))
+      .filter((s) => s.text.length > 0 && s.end > s.start);
     return {
       text: json.text?.trim() ?? "",
       language: json.language?.trim() || null,
+      duration: typeof json.duration === "number" ? json.duration : null,
+      segments,
     };
   });

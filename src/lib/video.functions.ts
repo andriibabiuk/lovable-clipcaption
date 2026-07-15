@@ -2,6 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+const segmentSchema = z.object({
+  start: z.number().min(0),
+  end: z.number().min(0),
+  text: z.string().min(1).max(2000),
+});
+
 const generateSchema = z.object({
   videoName: z.string().min(1).max(200),
   creator: z.string().max(120).optional().default(""),
@@ -10,6 +16,7 @@ const generateSchema = z.object({
   keywords: z.array(z.string().max(60)).max(30).default([]),
   thumbnailDataUrl: z.string().max(200000).nullable().optional(),
   transcript: z.string().max(500000).optional().default(""),
+  segments: z.array(segmentSchema).max(5000).default([]),
 });
 
 function buildMockMetadata(input: z.infer<typeof generateSchema>) {
@@ -47,29 +54,129 @@ function buildMockMetadata(input: z.infer<typeof generateSchema>) {
   };
 }
 
+const pad = (n: number) => n.toString().padStart(2, "0");
+function fmtTs(seconds: number): string {
+  const s = Math.max(0, seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  const ms = Math.round((s - Math.floor(s)) * 1000);
+  return `${pad(h)}:${pad(m)}:${pad(sec)},${ms.toString().padStart(3, "0")}`;
+}
+
+type SrtCue = { start: number; end: number; text: string };
+
+function cuesToSrt(cues: SrtCue[]): string {
+  return cues
+    .map((c, i) => `${i + 1}\n${fmtTs(c.start)} --> ${fmtTs(c.end)}\n${c.text}\n`)
+    .join("\n");
+}
+
+// Naive fallback: use Whisper segments directly, wrapping long lines.
+function segmentsToSrt(segments: z.infer<typeof segmentSchema>[]): string {
+  const cues: SrtCue[] = segments.map((s) => ({
+    start: s.start,
+    end: Math.max(s.end, s.start + 0.4),
+    text: wrapCaptionText(s.text),
+  }));
+  return cuesToSrt(cues);
+}
+
+function wrapCaptionText(text: string, maxCharsPerLine = 42): string {
+  const words = text.trim().split(/\s+/);
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    if (!cur) cur = w;
+    else if ((cur + " " + w).length <= maxCharsPerLine) cur += " " + w;
+    else {
+      lines.push(cur);
+      cur = w;
+      if (lines.length === 1 && cur.length > maxCharsPerLine) {
+        // fall through, second line will still be too long — acceptable
+      }
+    }
+    if (lines.length === 2) break;
+  }
+  if (cur && lines.length < 2) lines.push(cur);
+  return lines.slice(0, 2).join("\n");
+}
+
 function transcriptToSrt(transcript: string, language: string): string {
   const clean = transcript.trim();
   if (!clean) return buildMockSrt("your video", language);
-  // Split transcript into ~10-word segments, 4s each.
   const words = clean.split(/\s+/);
-  const segments: string[] = [];
+  const cues: SrtCue[] = [];
   for (let i = 0; i < words.length; i += 10) {
-    segments.push(words.slice(i, i + 10).join(" "));
+    const start = (i / 10) * 4;
+    cues.push({ start, end: start + 4, text: wrapCaptionText(words.slice(i, i + 10).join(" ")) });
   }
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  const fmt = (s: number) => {
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    return `${pad(h)}:${pad(m)}:${pad(sec)},000`;
-  };
-  return segments
-    .map((text, i) => {
-      const start = i * 4;
-      const end = start + 4;
-      return `${i + 1}\n${fmt(start)} --> ${fmt(end)}\n${text}\n`;
-    })
-    .join("\n");
+  return cuesToSrt(cues);
+}
+
+async function polishSrtWithAI(
+  segments: z.infer<typeof segmentSchema>[],
+  language: string,
+): Promise<string | null> {
+  const key = process.env.LOVABLE_API_KEY;
+  if (!key || segments.length === 0) return null;
+
+  // Keep the prompt bounded — sample if there are too many segments.
+  const trimmed = segments.slice(0, 800);
+  const compact = trimmed.map((s) => ({
+    s: Math.round(s.start * 100) / 100,
+    e: Math.round(s.end * 100) / 100,
+    t: s.text.replace(/\s+/g, " ").trim(),
+  }));
+
+  const system =
+    "You are a professional subtitle editor. You receive Whisper transcription segments " +
+    "with start/end timestamps (seconds) and must produce subtitle cues optimized for on-screen reading. " +
+    "Rules: preserve original meaning and language; do NOT translate; fix obvious punctuation and casing; " +
+    "merge or split segments so each cue is 1.0-6.0 seconds long with a natural reading pace " +
+    "(~17 chars/sec, max ~84 chars total); wrap text into at most 2 lines of ~42 chars each using a single \\n; " +
+    "avoid cues shorter than 0.8s; keep timings within the original segment range; " +
+    "cues must not overlap and must be strictly ordered. " +
+    "Return STRICT JSON: { \"cues\": [ { \"start\": number, \"end\": number, \"text\": string } ] }.";
+
+  const user = `Language: ${language}\nSegments:\n${JSON.stringify(compact)}`;
+
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Lovable-API-Key": key },
+      body: JSON.stringify({
+        model: "openai/gpt-5-mini",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) return null;
+    const parsed = JSON.parse(content) as { cues?: Array<{ start?: number; end?: number; text?: string }> };
+    const cues: SrtCue[] = (parsed.cues ?? [])
+      .map((c) => ({
+        start: Number(c.start) || 0,
+        end: Number(c.end) || 0,
+        text: (c.text ?? "").toString().trim(),
+      }))
+      .filter((c) => c.text && c.end > c.start);
+    if (cues.length === 0) return null;
+    // Enforce ordering + non-overlap defensively.
+    cues.sort((a, b) => a.start - b.start);
+    for (let i = 1; i < cues.length; i++) {
+      if (cues[i].start < cues[i - 1].end) cues[i].start = cues[i - 1].end;
+      if (cues[i].end <= cues[i].start) cues[i].end = cues[i].start + 0.8;
+    }
+    return cuesToSrt(cues);
+  } catch {
+    return null;
+  }
 }
 
 function buildMockSrt(topic: string, language: string): string {
@@ -156,11 +263,18 @@ export const generateMetadata = createServerFn({ method: "POST" })
     if (quotaErr) throw new Error(quotaErr.message);
     const quota = Array.isArray(quotaRows) ? quotaRows[0] : quotaRows;
 
-    const aiMetadata = await generateMetadataWithAI(data);
+    const [aiMetadata, polishedSrt] = await Promise.all([
+      generateMetadataWithAI(data),
+      data.segments.length > 0 ? polishSrtWithAI(data.segments, data.language) : Promise.resolve(null),
+    ]);
     const metadata = aiMetadata ?? buildMockMetadata(data);
-    const srt = data.transcript
-      ? transcriptToSrt(data.transcript, data.language)
-      : buildMockSrt(data.topic || data.videoName, data.language);
+    const srt =
+      polishedSrt ??
+      (data.segments.length > 0
+        ? segmentsToSrt(data.segments)
+        : data.transcript
+          ? transcriptToSrt(data.transcript, data.language)
+          : buildMockSrt(data.topic || data.videoName, data.language));
 
     const { data: row, error } = await context.supabase
       .from("video_metadata")
