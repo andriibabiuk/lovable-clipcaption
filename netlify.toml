@@ -1,3 +1,11 @@
 [build]
   command = "bun run build"
   publish = "dist"
+
+[build.environment]
+  # These are publishable/anon values by design (Vite inlines VITE_* into the
+  # client bundle; the auth-middleware/client also read the non-VITE_-prefixed
+  # copies of the same publishable Supabase key). Netlify's secrets scanner
+  # otherwise false-positives on them. SUPABASE_SERVICE_ROLE_KEY is NOT here —
+  # that one must stay caught if it ever leaks into build output.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_PROJECT_ID,VITE_SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_URL,SUPABASE_PROJECT_ID,SUPABASE_PUBLISHABLE_KEY,SUPABASE_URL,VITE_PAYMENTS_CLIENT_TOKEN"
