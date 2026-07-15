@@ -1,0 +1,1 @@
+ALTER TABLE public.video_metadata ADD COLUMN IF NOT EXISTS transcript TEXT;

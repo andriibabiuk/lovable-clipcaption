@@ -130,6 +130,7 @@ export type Database = {
           subtitle_srt: string | null
           thumbnail_url: string | null
           topic: string | null
+          transcript: string | null
           updated_at: string
           user_id: string
           video_name: string
@@ -144,6 +145,7 @@ export type Database = {
           subtitle_srt?: string | null
           thumbnail_url?: string | null
           topic?: string | null
+          transcript?: string | null
           updated_at?: string
           user_id: string
           video_name: string
@@ -158,6 +160,7 @@ export type Database = {
           subtitle_srt?: string | null
           thumbnail_url?: string | null
           topic?: string | null
+          transcript?: string | null
           updated_at?: string
           user_id?: string
           video_name?: string
