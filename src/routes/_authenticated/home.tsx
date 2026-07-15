@@ -208,6 +208,9 @@ function HomePage() {
 
           {files.length > 0 && (
             <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Thumbnails only — videos are not previewed or stored.
+              </p>
               {files.map((f) => (
                 <div key={f.id} className="flex items-center gap-3 border rounded-lg p-3">
                   <div className="h-12 w-20 rounded bg-secondary overflow-hidden flex-shrink-0">
