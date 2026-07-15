@@ -56,7 +56,7 @@ function DashboardPage() {
                 <Link to="/admin">Admin</Link>
               </Button>
             )}
-            <span className="text-sm text-muted-foreground">{email}</span>
+            <span className="text-sm text-muted-foreground">{profile?.display_name ?? profile?.email}</span>
             <Button variant="outline" size="sm" onClick={handleSignOut}>
               Sign out
             </Button>
