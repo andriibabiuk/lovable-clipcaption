@@ -274,8 +274,8 @@ function MetadataDialog({ item, onClose }: { item: VideoRow | null; onClose: () 
 
   return (
     <Dialog open={!!item} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden p-0 gap-0">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div>
               <DialogTitle className="text-xl font-semibold tracking-tight">Video Metadata</DialogTitle>
@@ -289,7 +289,7 @@ function MetadataDialog({ item, onClose }: { item: VideoRow | null; onClose: () 
           </div>
         </DialogHeader>
 
-        <div className="overflow-y-auto px-6 py-5 space-y-6">
+        <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5 space-y-6">
           <MetadataSection title="Original Video">
             <MetadataField label="Video Name" value={video.video_name} />
           </MetadataSection>
