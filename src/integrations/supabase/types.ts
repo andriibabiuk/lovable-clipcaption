@@ -121,6 +121,7 @@ export type Database = {
       }
       video_metadata: {
         Row: {
+          audio_path: string | null
           created_at: string
           id: string
           keywords: string[]
@@ -136,6 +137,7 @@ export type Database = {
           video_name: string
         }
         Insert: {
+          audio_path?: string | null
           created_at?: string
           id?: string
           keywords?: string[]
@@ -151,6 +153,7 @@ export type Database = {
           video_name: string
         }
         Update: {
+          audio_path?: string | null
           created_at?: string
           id?: string
           keywords?: string[]
