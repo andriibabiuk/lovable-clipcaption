@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { platformMetadataSchema, type PlatformMetadata } from "@/lib/export";
 
 const segmentSchema = z.object({
   start: z.number().min(0),
@@ -200,7 +201,7 @@ function buildMockSrt(topic: string, language: string): string {
 
 async function generateMetadataWithAI(
   input: z.infer<typeof generateSchema>,
-): Promise<ReturnType<typeof buildMockMetadata> | null> {
+): Promise<PlatformMetadata | null> {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) return null;
   const transcript = input.transcript.trim().slice(0, 12000);
@@ -247,8 +248,11 @@ Return JSON with this exact shape:
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = json.choices?.[0]?.message?.content;
     if (!content) return null;
-    const parsed = JSON.parse(content);
-    return parsed;
+    // Validate the AI response shape so malformed JSON falls back to the mock
+    // metadata instead of persisting undefined fields into the database.
+    const parsedJson = JSON.parse(content) as unknown;
+    const result = platformMetadataSchema.safeParse(parsedJson);
+    return result.success ? result.data : null;
   } catch {
     return null;
   }

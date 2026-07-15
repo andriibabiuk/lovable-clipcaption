@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/components/theme-provider";
 import { useUserQuota } from "@/hooks/use-role";
+import { useProfile, useInvalidateProfile } from "@/hooks/use-profile";
 import {
   deleteMyAccount,
   getMySubscription,
@@ -46,20 +47,18 @@ function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { data: quota } = useUserQuota();
   const qc = useQueryClient();
+  const invalidateProfile = useInvalidateProfile();
+  const { data: profile } = useProfile();
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
 
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      const uid = data.user?.id;
-      setEmail(data.user?.email ?? "");
-      if (!uid) return;
-      const { data: p } = await supabase.from("profiles").select("display_name").eq("id", uid).maybeSingle();
-      setName(p?.display_name ?? "");
-    })();
-  }, []);
+    if (profile) {
+      setEmail(profile.email ?? "");
+      setName(profile.name ?? "");
+    }
+  }, [profile]);
 
   const subFn = useServerFn(getMySubscription);
   const sub = useQuery({ queryKey: ["my-subscription"], queryFn: () => subFn() });
@@ -67,7 +66,11 @@ function SettingsPage() {
   const updateNameFn = useServerFn(updateProfileName);
   const saveName = useMutation({
     mutationFn: (displayName: string) => updateNameFn({ data: { displayName } }),
-    onSuccess: () => toast.success("Name updated"),
+    onSuccess: () => {
+      toast.success("Name updated");
+      // Keep the header + any other consumers in sync with the new name.
+      invalidateProfile();
+    },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
