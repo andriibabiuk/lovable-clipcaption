@@ -88,6 +88,7 @@ export const generateMetadata = createServerFn({ method: "POST" })
         keywords: data.keywords,
         metadata_json: metadata,
         subtitle_srt: srt,
+        status: "completed",
       })
       .select("*")
       .single();

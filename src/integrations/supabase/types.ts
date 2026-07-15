@@ -126,6 +126,7 @@ export type Database = {
           keywords: string[]
           language: string | null
           metadata_json: Json
+          status: string
           subtitle_srt: string | null
           thumbnail_url: string | null
           topic: string | null
@@ -139,6 +140,7 @@ export type Database = {
           keywords?: string[]
           language?: string | null
           metadata_json?: Json
+          status?: string
           subtitle_srt?: string | null
           thumbnail_url?: string | null
           topic?: string | null
@@ -152,6 +154,7 @@ export type Database = {
           keywords?: string[]
           language?: string | null
           metadata_json?: Json
+          status?: string
           subtitle_srt?: string | null
           thumbnail_url?: string | null
           topic?: string | null
