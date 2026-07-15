@@ -190,6 +190,9 @@ function HomePage() {
             <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 text-sm font-medium">Drop videos here or click to browse</p>
             <p className="text-xs text-muted-foreground mt-1">Batch upload supported</p>
+            <p className="text-xs text-muted-foreground mt-2 max-w-sm mx-auto">
+              We do not store or play your videos. Only a single-frame thumbnail is extracted so you can identify the file.
+            </p>
             <input
               ref={inputRef}
               type="file"
@@ -205,6 +208,9 @@ function HomePage() {
 
           {files.length > 0 && (
             <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Thumbnails only — videos are not previewed or stored.
+              </p>
               {files.map((f) => (
                 <div key={f.id} className="flex items-center gap-3 border rounded-lg p-3">
                   <div className="h-12 w-20 rounded bg-secondary overflow-hidden flex-shrink-0">
