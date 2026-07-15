@@ -18,6 +18,7 @@ import { useProfile } from "@/hooks/use-profile";
 import { ExportButtons } from "@/components/export-buttons";
 import { generateMetadata, listMyMetadata } from "@/lib/video.functions";
 import { transcribeAudioChunk } from "@/lib/transcribe.functions";
+import { supabase } from "@/integrations/supabase/client";
 import {
   parsePlatformMetadata,
   type PlatformMetadata,
@@ -50,6 +51,7 @@ type QueuedFile = {
   transcript?: string;
   segments?: Array<{ start: number; end: number; text: string }>;
   detectedLanguage?: string | null;
+  audioPath?: string | null;
   error?: string;
 };
 
