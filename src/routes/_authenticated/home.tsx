@@ -277,7 +277,9 @@ function HomePage() {
                         <X className="h-4 w-4" />
                       </button>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{f.stage}</p>
+                    <p className={"mt-0.5 text-xs " + (f.stage === "Failed" ? "text-destructive" : "text-muted-foreground")}>
+                      {f.stage === "Failed" && f.error ? f.error : f.stage}
+                    </p>
                     <Progress value={f.progress} className="mt-2 h-1.5" />
                   </div>
                   {f.stage === "Ready" && (
