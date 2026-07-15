@@ -1,5 +1,5 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile } from "@ffmpeg/util";
+import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 let ffmpegSingleton: FFmpeg | null = null;
 
@@ -7,12 +7,14 @@ async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
   if (ffmpegSingleton) return ffmpegSingleton;
   const ff = new FFmpeg();
   if (onLog) ff.on("log", ({ message }) => onLog(message));
-  // Load bundled core from CDN (single-threaded, works without COOP/COEP).
+  // Load bundled core from CDN. The internal Worker can't cross-origin
+  // importScripts the CDN files, so we fetch them into same-origin blob URLs.
   const base = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
-  await ff.load({
-    coreURL: `${base}/ffmpeg-core.js`,
-    wasmURL: `${base}/ffmpeg-core.wasm`,
-  });
+  const [coreURL, wasmURL] = await Promise.all([
+    toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
+    toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
+  ]);
+  await ff.load({ coreURL, wasmURL });
   ffmpegSingleton = ff;
   return ff;
 }
