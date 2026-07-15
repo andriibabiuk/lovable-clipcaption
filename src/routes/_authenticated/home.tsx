@@ -61,6 +61,16 @@ type QueuedFile = {
 };
 
 const LANGUAGES = ["English", "Spanish", "French", "German", "Portuguese", "Japanese", "Italian", "Dutch"];
+const LANGUAGE_CODES: Record<string, string> = {
+  English: "en",
+  Spanish: "es",
+  French: "fr",
+  German: "de",
+  Portuguese: "pt",
+  Japanese: "ja",
+  Italian: "it",
+  Dutch: "nl",
+};
 
 function HomePage() {
   const [files, setFiles] = useState<QueuedFile[]>([]);
@@ -141,7 +151,12 @@ function HomePage() {
       for (let i = 0; i < chunks.length; i++) {
         const b64 = await blobToBase64(chunks[i]);
         const { text } = await transcribeFn({
-          data: { audioBase64: b64, mimeType, filename: `${filename.replace(/\.ogg$/, "")}-${i}.ogg` },
+          data: {
+            audioBase64: b64,
+            mimeType,
+            filename: `${filename.replace(/\.ogg$/, "")}-${i}.ogg`,
+            language: LANGUAGE_CODES[language],
+          },
         });
         parts.push(text);
         update({ progress: Math.round(55 + ((i + 1) / chunks.length) * 40) });
