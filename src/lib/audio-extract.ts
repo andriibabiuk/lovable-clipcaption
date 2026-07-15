@@ -2,21 +2,46 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 let ffmpegSingleton: FFmpeg | null = null;
+let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 
 async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
   if (ffmpegSingleton) return ffmpegSingleton;
+  if (ffmpegLoadPromise) return ffmpegLoadPromise;
+
+  ffmpegLoadPromise = (async () => {
   const ff = new FFmpeg();
   if (onLog) ff.on("log", ({ message }) => onLog(message));
-  // Load bundled core from CDN. The internal Worker can't cross-origin
-  // importScripts the CDN files, so we fetch them into same-origin blob URLs.
-  const base = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
+
+  // Load the ESM core from CDN and convert it to same-origin blob URLs.
+  // The ffmpeg worker runs as a module worker in Vite/TanStack Start; the UMD
+  // core fails there because it does not export createFFmpegCore as default.
+  const base = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm";
   const [coreURL, wasmURL] = await Promise.all([
     toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
     toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
   ]);
   await ff.load({ coreURL, wasmURL });
   ffmpegSingleton = ff;
-  return ff;
+    return ff;
+  })().catch((err) => {
+    ffmpegLoadPromise = null;
+    throw err;
+  });
+
+  return ffmpegLoadPromise;
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return "Audio extraction failed";
+}
+
+async function runFFmpeg(ff: FFmpeg, args: string[]) {
+  const exitCode = await ff.exec(args);
+  if (exitCode !== 0) {
+    throw new Error(`Audio extraction failed with ffmpeg exit code ${exitCode}`);
+  }
 }
 
 export type ExtractProgress = (info: { ratio: number; stage: string }) => void;
@@ -39,21 +64,24 @@ export async function extractAudio(
     onProgress?.({ ratio: Math.min(0.95, Math.max(0.05, progress)), stage: "Extracting audio" });
   });
 
-  await ff.writeFile(inName, await fetchFile(file));
-  await ff.exec([
-    "-i", inName,
-    "-vn",
-    "-ac", "1",
-    "-ar", "16000",
-    "-c:a", "libopus",
-    "-b:a", "24k",
-    outName,
-  ]);
-  const data = await ff.readFile(outName);
   try {
-    await ff.deleteFile(inName);
-    await ff.deleteFile(outName);
-  } catch { /* ignore */ }
+    await ff.writeFile(inName, await fetchFile(file));
+    await runFFmpeg(ff, [
+      "-i", inName,
+      "-vn",
+      "-ac", "1",
+      "-ar", "16000",
+      "-c:a", "libopus",
+      "-b:a", "24k",
+      outName,
+    ]);
+  } catch (err) {
+    throw new Error(errorMessage(err));
+  }
+
+  const data = await ff.readFile(outName);
+  void ff.deleteFile(inName).catch(() => {});
+  void ff.deleteFile(outName).catch(() => {});
 
   const bytes: Uint8Array =
     typeof data === "string" ? new TextEncoder().encode(data) : (data as Uint8Array);
