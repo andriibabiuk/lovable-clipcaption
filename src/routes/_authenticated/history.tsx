@@ -337,6 +337,29 @@ const HistoryCard = memo(function HistoryCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(row.video_name);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioOpen, setAudioOpen] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
+
+  const loadAudio = useCallback(async () => {
+    if (!row.audio_path || audioUrl) {
+      setAudioOpen(true);
+      return;
+    }
+    setAudioLoading(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from("optimized-audio")
+        .createSignedUrl(row.audio_path, 60 * 60);
+      if (error || !data?.signedUrl) throw new Error(error?.message ?? "Failed to load audio");
+      setAudioUrl(data.signedUrl);
+      setAudioOpen(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load audio");
+    } finally {
+      setAudioLoading(false);
+    }
+  }, [row.audio_path, audioUrl]);
 
   useEffect(() => {
     setDraft(row.video_name);
