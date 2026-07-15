@@ -98,9 +98,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {initials || "U"}
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="text-sm text-foreground max-w-[140px] truncate leading-none">
-                  {profile.name ?? profile.email}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-foreground max-w-[140px] truncate leading-none">
+                    {profile.name ?? profile.email}
+                  </span>
+                  {quota && (
+                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground leading-none">
+                      {quota.tier}
+                    </span>
+                  )}
+                </div>
                 {quota && (
                   <span className="text-xs text-muted-foreground tabular-nums leading-none mt-1">
                     {quota.monthly_limit == null
