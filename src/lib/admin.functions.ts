@@ -2,10 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-async function assertAdmin(context: {
-  supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> };
-  userId: string;
-}) {
+type AuthCtx = Parameters<
+  Parameters<ReturnType<typeof requireSupabaseAuth>["server"]>[0]
+>[0]["context"];
+
+async function assertAdmin(context: AuthCtx) {
   const { data, error } = await context.supabase.rpc("has_role", {
     _user_id: context.userId,
     _role: "admin",
@@ -25,6 +26,7 @@ export const listUsersWithRoles = createServerFn({ method: "GET" })
       perPage: 200,
     });
     if (usersErr) throw usersErr;
+    const users = usersRes.users ?? [];
 
     const { data: roles, error: rolesErr } = await supabaseAdmin
       .from("user_roles")
@@ -38,7 +40,7 @@ export const listUsersWithRoles = createServerFn({ method: "GET" })
       rolesByUser.set(r.user_id, list);
     }
 
-    return usersRes.users
+    return users
       .map((u) => {
         const userRoles = rolesByUser.get(u.id) ?? ["free"];
         const tier: "admin" | "premium" | "free" = userRoles.includes("admin")
@@ -97,7 +99,7 @@ export const getPlatformStats = createServerFn({ method: "GET" })
     ]);
 
     const { data: usersRes } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1 });
-    const totalUsers = usersRes?.total ?? null;
+    const totalUsers = (usersRes as { total?: number } | null)?.total ?? null;
 
     return {
       totalUsers,
