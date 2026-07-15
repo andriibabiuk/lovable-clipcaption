@@ -261,14 +261,15 @@ function HistoryPage() {
 
 function MetadataDialog({ item, onClose }: { item: VideoRow | null; onClose: () => void }) {
   if (!item) return null;
-  const meta = item.metadata_json as unknown as PlatformMetadata;
-  const base = safeFilename(item.video_name.replace(/\.[a-z0-9]+$/i, ""));
+  const video = item;
+  const meta = video.metadata_json as unknown as PlatformMetadata;
+  const base = safeFilename(video.video_name.replace(/\.[a-z0-9]+$/i, ""));
 
-  const keywords = item.keywords?.filter(Boolean).join(", ") ?? "";
-  const summary = `This video explores ${item.topic || "the main topic"}, covering key strategies, practical tips, and actionable takeaways for content creators and marketers.`;
+  const keywords = video.keywords?.filter(Boolean).join(", ") ?? "";
+  const summary = `This video explores ${video.topic || "the main topic"}, covering key strategies, practical tips, and actionable takeaways for content creators and marketers.`;
 
   function handleDownloadAll() {
-    downloadBlob(`${base}-metadata.txt`, "text/plain", buildCombinedText(item.video_name, meta));
+    downloadBlob(`${base}-metadata.txt`, "text/plain", buildCombinedText(video.video_name, meta));
   }
 
   return (
