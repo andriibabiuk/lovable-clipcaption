@@ -202,7 +202,7 @@ function buildMockSrt(topic: string, language: string): string {
 
 async function generateMetadataWithAI(
   input: z.infer<typeof generateSchema>,
-): Promise<PlatformMetadata | null> {
+): Promise<{ metadata: PlatformMetadata; detectedLanguage: string | null } | null> {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) return null;
   const transcript = input.transcript.trim().slice(0, 12000);
@@ -210,11 +210,15 @@ async function generateMetadataWithAI(
 
   const system =
     "You generate social media metadata for a video based on its transcript. " +
-    "Return STRICT JSON matching the requested schema, no prose. Hashtags are single words prefixed with '#'.";
+    "First, detect the primary spoken language of the transcript. " +
+    "Then write EVERY title, description, caption, and hashtag in that SAME language — " +
+    "do NOT translate to English. Hashtags are single words prefixed with '#' (transliterate if the " +
+    "script has no hashtag convention, but keep the language). " +
+    "Return STRICT JSON matching the requested schema, no prose.";
   const user = `Video name: ${input.videoName}
 Creator: ${input.creator || "(unknown)"}
 Topic hint: ${input.topic || "(infer from transcript)"}
-Language: ${input.language}
+Language hint (may be wrong — trust the transcript): ${input.language}
 User keywords: ${input.keywords.join(", ") || "(none)"}
 
 Transcript:
@@ -224,6 +228,7 @@ ${transcript}
 
 Return JSON with this exact shape:
 {
+  "detectedLanguage": string (English name of the detected transcript language, e.g. "Ukrainian"),
   "youtube": { "title": string (<=100 chars), "description": string, "hashtags": string[] (<=12) },
   "instagram": { "caption": string, "hashtags": string[] (<=15) },
   "tiktok": { "title": string, "description": string, "hashtags": string[] (<=12) }
@@ -249,11 +254,13 @@ Return JSON with this exact shape:
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = json.choices?.[0]?.message?.content;
     if (!content) return null;
-    // Validate the AI response shape so malformed JSON falls back to the mock
-    // metadata instead of persisting undefined fields into the database.
-    const parsedJson = JSON.parse(content) as unknown;
+    const parsedJson = JSON.parse(content) as { detectedLanguage?: unknown };
+    const detectedLanguage =
+      typeof parsedJson.detectedLanguage === "string" && parsedJson.detectedLanguage.trim()
+        ? parsedJson.detectedLanguage.trim().slice(0, 50)
+        : null;
     const result = platformMetadataSchema.safeParse(parsedJson);
-    return result.success ? result.data : null;
+    return result.success ? { metadata: result.data, detectedLanguage } : null;
   } catch {
     return null;
   }
