@@ -38,7 +38,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Download, Trash2, Search, FileText, Copy, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, X } from "lucide-react";
+import { Download, Trash2, Search, FileText, Copy, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, X, Play } from "lucide-react";
 import { deleteMetadata, deleteMetadataBatch, listMyMetadata, renameMetadata } from "@/lib/video.functions";
 import {
   baseFilename,
@@ -461,13 +461,25 @@ const HistoryCard = memo(function HistoryCard({
       </CardHeader>
 
       <CardContent className="px-4 pb-4 pt-0">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           <ExportButtons
             videoName={row.video_name}
             metadata={meta}
             srt={row.subtitle_srt}
             disabled={!hasMeta}
           />
+
+          {row.audio_path && !audioOpen && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={audioLoading}
+              onClick={loadAudio}
+            >
+              <Play className="h-4 w-4 mr-1.5" />
+              {audioLoading ? "Loading…" : "Play audio"}
+            </Button>
+          )}
 
           <div className="flex-1" />
 
@@ -500,6 +512,15 @@ const HistoryCard = memo(function HistoryCard({
             </AlertDialogContent>
           </AlertDialog>
         </div>
+
+        {audioOpen && audioUrl && (
+          <div className="mt-3">
+            <audio src={audioUrl} controls preload="metadata" className="w-full h-10" />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Optimized audio (16 kHz mono Opus). Signed link expires in 1 hour.
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
