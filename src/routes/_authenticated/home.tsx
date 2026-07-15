@@ -76,6 +76,7 @@ function HomePage() {
   } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const navigate = useNavigate();
 
   const { data: quota, refetch: refetchQuota } = useUserQuota();
   const qc = useQueryClient();
@@ -230,6 +231,7 @@ function HomePage() {
       toast.success("Metadata generated — saved to History");
       refetchQuota();
       qc.invalidateQueries({ queryKey: ["my-videos"] });
+      navigate({ to: "/history" });
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : "Generation failed";
