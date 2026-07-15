@@ -1,24 +1,66 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSignedIn(!!data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSignedIn(!!s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
+      <header className="border-b">
+        <div className="mx-auto max-w-5xl px-6 py-4 flex items-center justify-between">
+          <span className="text-lg font-semibold tracking-tight">ClipCaption</span>
+          <nav className="flex items-center gap-2">
+            {signedIn ? (
+              <Button asChild size="sm">
+                <Link to="/dashboard">Open app</Link>
+              </Button>
+            ) : (
+              <>
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/auth">Sign in</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link to="/auth">Get started</Link>
+                </Button>
+              </>
+            )}
+          </nav>
+        </div>
+      </header>
+      <main className="flex-1 flex items-center">
+        <div className="mx-auto max-w-3xl px-6 py-24 text-center">
+          <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">
+            AI subtitles &amp; metadata for every clip.
+          </h1>
+          <p className="mt-6 text-base text-muted-foreground">
+            Upload a video, get accurate transcripts, platform-ready titles, descriptions, and
+            hashtags — in minutes.
+          </p>
+          <div className="mt-8 flex justify-center gap-3">
+            {signedIn ? (
+              <Button asChild size="lg">
+                <Link to="/dashboard">Go to dashboard</Link>
+              </Button>
+            ) : (
+              <Button asChild size="lg">
+                <Link to="/auth">Create free account</Link>
+              </Button>
+            )}
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
