@@ -16,23 +16,34 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
-    // Decode base64 to bytes
-    const binary = atob(data.audioBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const buf = new ArrayBuffer(bytes.byteLength);
-    new Uint8Array(buf).set(bytes);
-    const blob = new Blob([buf], { type: data.mimeType });
+    // Gemini transcribes via chat completions with inline audio input.
+    // Derive audio format from the mime type (e.g. "audio/ogg" -> "ogg").
+    const format = (data.mimeType.split("/")[1] ?? "ogg").split(";")[0];
+    const instruction = data.language
+      ? `Transcribe this audio in ${data.language} verbatim. Output only the transcript text, no commentary.`
+      : "Transcribe this audio verbatim. Output only the transcript text, no commentary.";
 
-    const form = new FormData();
-    form.append("file", blob, data.filename);
-    form.append("model", "openai/gpt-4o-transcribe");
-    if (data.language) form.append("language", data.language);
-
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { "Lovable-API-Key": key },
-      body: form,
+      headers: {
+        "Lovable-API-Key": key,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: instruction },
+              {
+                type: "input_audio",
+                input_audio: { data: data.audioBase64, format },
+              },
+            ],
+          },
+        ],
+      }),
     });
 
     if (!res.ok) {
@@ -41,6 +52,8 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
       if (res.status === 402) throw new Error("AI credits exhausted. Add credits to continue.");
       throw new Error(`Transcription failed (${res.status}): ${text.slice(0, 200)}`);
     }
-    const json = (await res.json()) as { text?: string };
-    return { text: json.text ?? "" };
+    const json = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return { text: json.choices?.[0]?.message?.content?.trim() ?? "" };
   });
