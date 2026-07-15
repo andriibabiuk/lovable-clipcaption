@@ -25,6 +25,15 @@ import { useTheme } from "@/components/theme-provider";
 import { useUserQuota } from "@/hooks/use-role";
 import { useProfile, useInvalidateProfile } from "@/hooks/use-profile";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Check } from "lucide-react";
+import {
   deleteMyAccount,
   getMySubscription,
   mockCancelSubscription,
@@ -77,20 +86,23 @@ function SettingsPage() {
   const upgradeFn = useServerFn(mockUpgradeToPremium);
   const cancelFn = useServerFn(mockCancelSubscription);
   const deleteFn = useServerFn(deleteMyAccount);
+  const [planOpen, setPlanOpen] = useState(false);
 
   const upgrade = useMutation({
     mutationFn: () => upgradeFn(),
     onSuccess: () => {
       toast.success("Welcome to Premium!");
       qc.invalidateQueries();
+      setPlanOpen(false);
     },
   });
 
   const cancel = useMutation({
     mutationFn: () => cancelFn(),
     onSuccess: () => {
-      toast.success("Subscription canceled");
+      toast.success("Downgraded to Free");
       qc.invalidateQueries();
+      setPlanOpen(false);
     },
   });
 
@@ -161,15 +173,76 @@ function SettingsPage() {
                 {tier === "admin" && "Unlimited generations"}
               </p>
             </div>
-            {tier === "free" && (
-              <Button onClick={() => upgrade.mutate()} disabled={upgrade.isPending}>
-                Upgrade to Premium — $10/mo
-              </Button>
-            )}
-            {tier === "premium" && (
-              <Button variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
-                Cancel subscription
-              </Button>
+            {tier !== "admin" && (
+              <Dialog open={planOpen} onOpenChange={setPlanOpen}>
+                <DialogTrigger asChild>
+                  {tier === "free" ? (
+                    <Button>Upgrade to Premium — $10/mo</Button>
+                  ) : (
+                    <Button variant="outline">Change plan</Button>
+                  )}
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Choose your plan</DialogTitle>
+                    <DialogDescription>
+                      Payments are simulated for this preview. Stripe checkout is coming soon.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 sm:grid-cols-2 pt-2">
+                    <PlanCard
+                      name="Free"
+                      price="$0"
+                      period="/mo"
+                      features={["3 generations / month", "All export formats", "Subtitle download"]}
+                      current={tier === "free"}
+                      cta={
+                        tier === "premium" ? (
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => cancel.mutate()}
+                            disabled={cancel.isPending}
+                          >
+                            {cancel.isPending ? "Downgrading…" : "Downgrade"}
+                          </Button>
+                        ) : (
+                          <Button variant="outline" className="w-full" disabled>
+                            Current plan
+                          </Button>
+                        )
+                      }
+                    />
+                    <PlanCard
+                      name="Premium"
+                      price="$10"
+                      period="/mo"
+                      highlight
+                      features={[
+                        "150 generations / month",
+                        "Priority processing",
+                        "All Free features",
+                      ]}
+                      current={tier === "premium"}
+                      cta={
+                        tier === "free" ? (
+                          <Button
+                            className="w-full"
+                            onClick={() => upgrade.mutate()}
+                            disabled={upgrade.isPending}
+                          >
+                            {upgrade.isPending ? "Upgrading…" : "Upgrade"}
+                          </Button>
+                        ) : (
+                          <Button className="w-full" disabled>
+                            Current plan
+                          </Button>
+                        )
+                      }
+                    />
+                  </div>
+                </DialogContent>
+              </Dialog>
             )}
           </div>
           <p className="text-xs text-muted-foreground border-t pt-3">
@@ -222,5 +295,49 @@ function SettingsPage() {
         </section>
       </div>
     </AppShell>
+  );
+}
+
+function PlanCard({
+  name,
+  price,
+  period,
+  features,
+  cta,
+  current,
+  highlight,
+}: {
+  name: string;
+  price: string;
+  period: string;
+  features: string[];
+  cta: React.ReactNode;
+  current?: boolean;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-lg border p-5 flex flex-col gap-4 ${
+        highlight ? "border-foreground" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">{name}</h3>
+        {current && <Badge variant="secondary">Current</Badge>}
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-3xl font-semibold tracking-tight">{price}</span>
+        <span className="text-sm text-muted-foreground">{period}</span>
+      </div>
+      <ul className="space-y-2 text-sm flex-1">
+        {features.map((f) => (
+          <li key={f} className="flex items-start gap-2">
+            <Check className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
+      {cta}
+    </div>
   );
 }
