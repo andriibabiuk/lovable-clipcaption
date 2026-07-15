@@ -110,16 +110,16 @@ function HistoryPage() {
                 value={r.id}
                 className="border rounded-lg px-4 data-[state=open]:bg-secondary/30"
               >
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="h-10 w-16 rounded bg-secondary overflow-hidden flex-shrink-0">
+                <AccordionTrigger className="hover:no-underline w-full">
+                  <div className="flex items-center gap-3 w-full min-w-0 pr-2">
+                    <div className="h-10 w-16 rounded bg-secondary overflow-hidden shrink-0">
                       {r.thumbnail_url && (
                         <img src={r.thumbnail_url} alt="" className="h-full w-full object-cover" />
                       )}
                     </div>
-                    <div className="flex-1 min-w-0 text-left">
+                    <div className="flex-1 min-w-0 text-left overflow-hidden">
                       <p className="text-sm font-medium truncate">{r.video_name}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground truncate">
                         {new Date(r.created_at).toLocaleString()} · {r.language ?? "—"}
                       </p>
                     </div>
@@ -190,9 +190,9 @@ function PlatformBlock({
   return (
     <div className="border rounded-lg p-4 bg-background">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      {title2 && <p className="mt-1 text-sm font-medium">{title2}</p>}
-      <p className="mt-1 text-sm whitespace-pre-wrap">{body}</p>
-      {tags.length > 0 && <p className="mt-2 text-xs text-muted-foreground">{tags.join(" ")}</p>}
+      {title2 && <p className="mt-1 text-sm font-medium break-words">{title2}</p>}
+      <p className="mt-1 text-sm whitespace-pre-wrap break-words">{body}</p>
+      {tags.length > 0 && <p className="mt-2 text-xs text-muted-foreground break-words">{tags.join(" ")}</p>}
     </div>
   );
 }
