@@ -196,7 +196,7 @@ function HomePage() {
     mutationFn: async (target: QueuedFile) => {
       const kw = keywords.split(",").map((s) => s.trim()).filter(Boolean);
       const detected = prettyLanguage(target.detectedLanguage) || "English";
-      const { row } = await generateFn({
+      const { row, detectedLanguage } = await generateFn({
         data: {
           videoName: target.name,
           creator,
@@ -209,6 +209,11 @@ function HomePage() {
           audioPath: target.audioPath ?? null,
         },
       });
+      if (detectedLanguage) {
+        setFiles((prev) =>
+          prev.map((f) => (f.id === target.id ? { ...f, detectedLanguage } : f)),
+        );
+      }
       const r = row as { video_name: string; metadata_json: unknown; subtitle_srt: string };
       return {
         video_name: r.video_name,
