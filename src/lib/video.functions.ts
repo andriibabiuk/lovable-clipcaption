@@ -18,6 +18,7 @@ const generateSchema = z.object({
   thumbnailDataUrl: z.string().max(200000).nullable().optional(),
   transcript: z.string().max(500000).optional().default(""),
   segments: z.array(segmentSchema).max(5000).default([]),
+  audioPath: z.string().max(500).nullable().optional(),
 });
 
 function buildMockMetadata(input: z.infer<typeof generateSchema>) {
@@ -292,6 +293,7 @@ export const generateMetadata = createServerFn({ method: "POST" })
         metadata_json: metadata,
         subtitle_srt: srt,
         transcript: data.transcript || null,
+        audio_path: data.audioPath ?? null,
         status: "completed",
       })
       .select("*")
