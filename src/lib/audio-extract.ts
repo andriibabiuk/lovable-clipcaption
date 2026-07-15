@@ -92,16 +92,6 @@ export async function extractAudio(
   return { blob, mimeType: "audio/ogg", filename: "audio.ogg" };
 }
 
-/** Split a Blob into ~sizeBytes chunks. Byte-level split — fine for Whisper as separate calls. */
-export function chunkBlob(blob: Blob, sizeBytes: number): Blob[] {
-  if (blob.size <= sizeBytes) return [blob];
-  const chunks: Blob[] = [];
-  for (let start = 0; start < blob.size; start += sizeBytes) {
-    chunks.push(blob.slice(start, Math.min(start + sizeBytes, blob.size), blob.type));
-  }
-  return chunks;
-}
-
 export async function blobToBase64(blob: Blob): Promise<string> {
   const buf = new Uint8Array(await blob.arrayBuffer());
   let bin = "";
