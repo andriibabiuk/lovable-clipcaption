@@ -129,7 +129,7 @@ function HomePage() {
       update({ thumbnail: thumb, progress: 10, stage: "Extracting audio" });
 
       // 2. Extract audio via ffmpeg.wasm (browser only).
-      const { extractAudio, chunkBlob, blobToBase64 } = await import("@/lib/audio-extract.client");
+      const { extractAudio, chunkBlob, blobToBase64 } = await import("@/lib/audio-extract");
       const { blob, mimeType, filename } = await extractAudio(file, ({ ratio, stage }) => {
         update({ progress: Math.round(10 + ratio * 40), stage: stage === "Loading audio engine" ? "Extracting audio" : "Extracting audio" });
       });
