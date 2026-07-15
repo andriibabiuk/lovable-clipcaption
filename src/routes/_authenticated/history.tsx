@@ -5,12 +5,17 @@ import { useServerFn } from "@tanstack/react-start";
 import { AppShell } from "@/components/app-shell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+  Card,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +28,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Download, Trash2, Search } from "lucide-react";
+import { Download, Trash2, Search, ChevronDown, FileText } from "lucide-react";
 import { deleteMetadata, listMyMetadata } from "@/lib/video.functions";
 import {
   buildCombinedText,
@@ -43,8 +48,24 @@ export const Route = createFileRoute("/_authenticated/history")({
   component: HistoryPage,
 });
 
+type Status = "processing" | "completed" | "failed";
+
+function statusBadgeVariant(status: Status): "default" | "secondary" | "destructive" | "outline" {
+  switch (status) {
+    case "completed":
+      return "default";
+    case "processing":
+      return "secondary";
+    case "failed":
+      return "destructive";
+    default:
+      return "outline";
+  }
+}
+
 function HistoryPage() {
   const [q, setQ] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
   const qc = useQueryClient();
   const listFn = useServerFn(listMyMetadata);
   const delFn = useServerFn(deleteMetadata);
@@ -100,52 +121,97 @@ function HistoryPage() {
           </div>
         )}
 
-        <Accordion type="multiple" className="space-y-2">
+        <div className="grid gap-4">
           {filtered.map((r) => {
             const meta = r.metadata_json as unknown as PlatformMetadata;
             const base = safeFilename(r.video_name.replace(/\.[a-z0-9]+$/i, ""));
+            const status = ((r as unknown as { status?: Status }).status ?? "completed") as Status;
+            const isOpen = openId === r.id;
+            const hasMeta = status === "completed" && meta;
+
             return (
-              <AccordionItem
-                key={r.id}
-                value={r.id}
-                className="border rounded-lg px-4 data-[state=open]:bg-secondary/30"
-              >
-                <AccordionTrigger className="hover:no-underline w-full">
-                  <div className="flex items-center gap-3 w-full min-w-0 pr-2">
-                    <div className="h-10 w-16 rounded bg-secondary overflow-hidden shrink-0">
-                      {r.thumbnail_url && (
+              <Card key={r.id} className="overflow-hidden">
+                <CardHeader className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="h-14 w-24 rounded-md bg-secondary overflow-hidden shrink-0 border">
+                      {r.thumbnail_url ? (
                         <img src={r.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                          <FileText className="h-5 w-5" />
+                        </div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0 text-left overflow-hidden">
-                      <p className="text-sm font-medium truncate">{r.video_name}</p>
-                      <p className="text-xs text-muted-foreground truncate">
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                        <h3 className="text-sm font-medium truncate">{r.video_name}</h3>
+                        <Badge variant={statusBadgeVariant(status)} className="w-fit text-[10px] uppercase">
+                          {status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">
                         {new Date(r.created_at).toLocaleString()} · {r.language ?? "—"}
                       </p>
                     </div>
                   </div>
-                </AccordionTrigger>
-                <AccordionContent className="space-y-4 pt-2">
-                  <PlatformBlock title="YouTube" title2={meta.youtube.title} body={meta.youtube.description} tags={meta.youtube.hashtags} />
-                  <PlatformBlock title="Instagram" body={meta.instagram.caption} tags={meta.instagram.hashtags} />
-                  <PlatformBlock title="TikTok" title2={meta.tiktok.title} body={meta.tiktok.description} tags={meta.tiktok.hashtags} />
+                </CardHeader>
 
-                  <div className="flex flex-wrap gap-2 pt-2 border-t">
-                    <Button variant="outline" size="sm" onClick={() => downloadBlob(`${base}-metadata.txt`, "text/plain", buildCombinedText(r.video_name, meta))}>
+                <CardContent className="px-4 pb-4 pt-0">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!hasMeta}
+                      onClick={() =>
+                        hasMeta && downloadBlob(`${base}-metadata.txt`, "text/plain", buildCombinedText(r.video_name, meta))
+                      }
+                    >
                       <Download className="h-4 w-4 mr-1.5" /> .txt
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => downloadBlob(`${base}-metadata.json`, "application/json", JSON.stringify({ video: r.video_name, metadata: meta }, null, 2))}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!hasMeta}
+                      onClick={() =>
+                        hasMeta &&
+                        downloadBlob(
+                          `${base}-metadata.json`,
+                          "application/json",
+                          JSON.stringify({ video: r.video_name, metadata: meta }, null, 2),
+                        )
+                      }
+                    >
                       <Download className="h-4 w-4 mr-1.5" /> JSON
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => downloadBlob(`${base}-metadata.csv`, "text/csv", buildCsv(r.video_name, meta))}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!hasMeta}
+                      onClick={() => hasMeta && downloadBlob(`${base}-metadata.csv`, "text/csv", buildCsv(r.video_name, meta))}
+                    >
                       <Download className="h-4 w-4 mr-1.5" /> CSV
                     </Button>
                     {r.subtitle_srt && (
-                      <Button variant="outline" size="sm" onClick={() => downloadBlob(`${base}.srt`, "application/x-subrip", r.subtitle_srt!)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => downloadBlob(`${base}.srt`, "application/x-subrip", r.subtitle_srt!)}
+                      >
                         <Download className="h-4 w-4 mr-1.5" /> SRT
                       </Button>
                     )}
+
                     <div className="flex-1" />
+
+                    <Collapsible open={isOpen} onOpenChange={(open) => setOpenId(open ? r.id : null)}>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <ChevronDown className={`h-4 w-4 mr-1.5 transition-transform ${isOpen ? "rotate-180" : ""}`} /> Details
+                        </Button>
+                      </CollapsibleTrigger>
+                    </Collapsible>
+
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
@@ -166,11 +232,29 @@ function HistoryPage() {
                       </AlertDialogContent>
                     </AlertDialog>
                   </div>
-                </AccordionContent>
-              </AccordionItem>
+
+                  <Collapsible open={isOpen} onOpenChange={(open) => setOpenId(open ? r.id : null)}>
+                    <CollapsibleContent className="space-y-3 pt-4 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                      {status === "processing" && (
+                        <p className="text-sm text-muted-foreground">This video is still being processed.</p>
+                      )}
+                      {status === "failed" && (
+                        <p className="text-sm text-destructive">Processing failed. You can try generating metadata again.</p>
+                      )}
+                      {hasMeta && (
+                        <>
+                          <PlatformBlock title="YouTube" title2={meta.youtube.title} body={meta.youtube.description} tags={meta.youtube.hashtags} />
+                          <PlatformBlock title="Instagram" body={meta.instagram.caption} tags={meta.instagram.hashtags} />
+                          <PlatformBlock title="TikTok" title2={meta.tiktok.title} body={meta.tiktok.description} tags={meta.tiktok.hashtags} />
+                        </>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
+                </CardContent>
+              </Card>
             );
           })}
-        </Accordion>
+        </div>
       </div>
     </AppShell>
   );
