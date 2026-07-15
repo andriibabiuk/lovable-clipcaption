@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -76,6 +76,7 @@ function HomePage() {
   } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const navigate = useNavigate();
 
   const { data: quota, refetch: refetchQuota } = useUserQuota();
   const qc = useQueryClient();
@@ -230,6 +231,7 @@ function HomePage() {
       toast.success("Metadata generated — saved to History");
       refetchQuota();
       qc.invalidateQueries({ queryKey: ["my-videos"] });
+      navigate({ to: "/history" });
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : "Generation failed";
