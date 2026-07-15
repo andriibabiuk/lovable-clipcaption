@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AppShell } from "@/components/app-shell";
@@ -38,8 +38,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Download, Trash2, Search, FileText, Copy, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { deleteMetadata, deleteMetadataBatch, listMyMetadata } from "@/lib/video.functions";
+import { Download, Trash2, Search, FileText, Copy, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, X } from "lucide-react";
+import { deleteMetadata, deleteMetadataBatch, listMyMetadata, renameMetadata } from "@/lib/video.functions";
 import {
   baseFilename,
   buildCombinedText,
@@ -121,6 +121,7 @@ function HistoryPage() {
   const listFn = useServerFn(listMyMetadata);
   const delFn = useServerFn(deleteMetadata);
   const delBatchFn = useServerFn(deleteMetadataBatch);
+  const renameFn = useServerFn(renameMetadata);
 
   const items = useQuery({ queryKey: ["my-videos"], queryFn: () => listFn() });
 
@@ -142,8 +143,21 @@ function HistoryPage() {
     onError: (e: Error) => toast.error(e.message ?? "Failed to delete"),
   });
 
+  const rename = useMutation({
+    mutationFn: (v: { id: string; videoName: string }) => renameFn({ data: v }),
+    onSuccess: () => {
+      toast.success("Renamed");
+      qc.invalidateQueries({ queryKey: ["my-videos"] });
+    },
+    onError: (e: Error) => toast.error(e.message ?? "Failed to rename"),
+  });
+
   const handleDelete = useCallback((id: string) => del.mutate(id), [del]);
   const handleOpenDetail = useCallback((row: VideoRow) => setDetailItem(row), []);
+  const handleRename = useCallback(
+    (id: string, videoName: string) => rename.mutate({ id, videoName }),
+    [rename],
+  );
   const handleToggle = useCallback((id: string, checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -284,6 +298,7 @@ function HistoryPage() {
               onToggleSelect={handleToggle}
               onOpenDetail={handleOpenDetail}
               onDelete={handleDelete}
+              onRename={handleRename}
             />
           ))}
         </div>
@@ -300,12 +315,14 @@ const HistoryCard = memo(function HistoryCard({
   onToggleSelect,
   onOpenDetail,
   onDelete,
+  onRename,
 }: {
   row: VideoRow;
   selected: boolean;
   onToggleSelect: (id: string, checked: boolean) => void;
   onOpenDetail: (row: VideoRow) => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, videoName: string) => void;
 }) {
   // Derive presentation data once per row (not once per HistoryPage render).
   const { meta, status, hasMeta, lengthLabel } = useMemo(() => {
@@ -314,6 +331,29 @@ const HistoryCard = memo(function HistoryCard({
     const lengthLabel = formatLength(srtLengthSeconds(row.subtitle_srt));
     return { meta, status, hasMeta: !!meta, lengthLabel };
   }, [row.metadata_json, row.status, row.subtitle_srt]);
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(row.video_name);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setDraft(row.video_name);
+  }, [row.video_name]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function commit() {
+    const v = draft.trim();
+    if (!v || v === row.video_name) {
+      setEditing(false);
+      setDraft(row.video_name);
+      return;
+    }
+    onRename(row.id, v);
+    setEditing(false);
+  }
 
   return (
     <Card className={`overflow-hidden ${selected ? "ring-1 ring-primary" : ""}`}>
@@ -337,12 +377,57 @@ const HistoryCard = memo(function HistoryCard({
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-              <h3 className="text-sm font-medium truncate">{row.video_name}</h3>
-              <Badge variant={statusBadgeVariant(status)} className="w-fit text-[10px] uppercase">
-                {status}
-              </Badge>
-            </div>
+            {editing ? (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  ref={inputRef}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commit();
+                    if (e.key === "Escape") {
+                      setEditing(false);
+                      setDraft(row.video_name);
+                    }
+                  }}
+                  maxLength={200}
+                  className="h-8 text-sm"
+                />
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={commit} aria-label="Save">
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => {
+                    setEditing(false);
+                    setDraft(row.video_name);
+                  }}
+                  aria-label="Cancel"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h3 className="text-sm font-medium truncate">{row.video_name}</h3>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setEditing(true)}
+                    aria-label="Rename"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <Badge variant={statusBadgeVariant(status)} className="w-fit text-[10px] uppercase">
+                  {status}
+                </Badge>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground truncate mt-0.5">
               {new Date(row.created_at).toLocaleString()} · {row.language ?? "—"} · {lengthLabel}
             </p>

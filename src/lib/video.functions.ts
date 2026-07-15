@@ -339,3 +339,22 @@ export const deleteMetadataBatch = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true as const, count: data.ids.length };
   });
+
+export const renameMetadata = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({ id: z.string().uuid(), videoName: z.string().trim().min(1).max(200) })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await context.supabase
+      .from("video_metadata")
+      .update({ video_name: data.videoName })
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
