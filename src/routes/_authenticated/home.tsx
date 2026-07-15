@@ -235,7 +235,16 @@ function HomePage() {
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : "Generation failed";
-      toast.error(msg.includes("limit") ? "Monthly generation limit reached." : msg);
+      if (msg.toLowerCase().includes("limit")) {
+        toast.error("Monthly generation limit reached.", {
+          action: {
+            label: "Upgrade to Premium →",
+            onClick: () => navigate({ to: "/settings" }),
+          },
+        });
+      } else {
+        toast.error(msg);
+      }
     },
   });
 
