@@ -100,7 +100,3 @@ src/
 supabase/
 └── migrations/             # SQL migrations (schema, RLS policies, RPCs)
 ```
-
-## License
-
-Private project — no license specified.
