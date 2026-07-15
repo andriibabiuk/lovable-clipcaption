@@ -206,6 +206,7 @@ function HomePage() {
           thumbnailDataUrl: target.thumbnail,
           transcript: target.transcript ?? "",
           segments: target.segments ?? [],
+          audioPath: target.audioPath ?? null,
         },
       });
       const r = row as { video_name: string; metadata_json: unknown; subtitle_srt: string };
