@@ -53,8 +53,13 @@ export async function extractAudio(
     await ff.deleteFile(outName);
   } catch { /* ignore */ }
 
-  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
-  const blob = new Blob([bytes], { type: "audio/ogg" });
+  const bytes =
+    typeof data === "string"
+      ? new TextEncoder().encode(data)
+      : new Uint8Array(data as ArrayBufferLike);
+  const buf = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buf).set(bytes);
+  const blob = new Blob([buf], { type: "audio/ogg" });
   onProgress?.({ ratio: 1, stage: "Audio ready" });
   return { blob, mimeType: "audio/ogg", filename: "audio.ogg" };
 }
