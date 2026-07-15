@@ -37,7 +37,6 @@ import {
   buildCombinedText,
   downloadBlob,
   parsePlatformMetadata,
-  type PlatformMetadata,
 } from "@/lib/export";
 import { ExportButtons } from "@/components/export-buttons";
 
