@@ -21,9 +21,11 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
     const formData = new FormData();
     formData.append("file", blob, data.filename);
     formData.append("model", "openai/gpt-4o-transcribe");
-    // Omit `language` so Whisper auto-detects the spoken language.
-    // Use verbose_json to receive the detected language code alongside the transcript.
-    formData.append("response_format", "verbose_json");
+    // Omit `language` so the model auto-detects the spoken language.
+    // `gpt-4o-transcribe` only supports `json` or `text` (not `verbose_json`),
+    // so we get the transcript text without per-segment timings or a language
+    // field; downstream code synthesizes SRT timings from the full transcript.
+    formData.append("response_format", "json");
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
       method: "POST",
@@ -39,23 +41,11 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
       if (res.status === 402) throw new Error("AI credits exhausted. Add credits to continue.");
       throw new Error(`Transcription failed (${res.status}): ${text.slice(0, 200)}`);
     }
-    const json = (await res.json()) as {
-      text?: string;
-      language?: string;
-      duration?: number;
-      segments?: Array<{ start?: number; end?: number; text?: string }>;
-    };
-    const segments = (json.segments ?? [])
-      .map((s) => ({
-        start: typeof s.start === "number" ? s.start : 0,
-        end: typeof s.end === "number" ? s.end : 0,
-        text: (s.text ?? "").trim(),
-      }))
-      .filter((s) => s.text.length > 0 && s.end > s.start);
+    const json = (await res.json()) as { text?: string };
     return {
       text: json.text?.trim() ?? "",
-      language: json.language?.trim() || null,
-      duration: typeof json.duration === "number" ? json.duration : null,
-      segments,
+      language: null as string | null,
+      duration: null as number | null,
+      segments: [] as Array<{ start: number; end: number; text: string }>,
     };
   });
