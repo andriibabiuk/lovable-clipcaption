@@ -280,14 +280,16 @@ export const generateMetadata = createServerFn({ method: "POST" })
       generateMetadataWithAI(data),
       data.segments.length > 0 ? polishSrtWithAI(data.segments, data.language) : Promise.resolve(null),
     ]);
-    const metadata = aiMetadata ?? buildMockMetadata(data);
+    const metadata = aiMetadata?.metadata ?? buildMockMetadata(data);
+    const detectedLanguage = aiMetadata?.detectedLanguage ?? null;
+    const finalLanguage = detectedLanguage || data.language;
     const srt =
       polishedSrt ??
       (data.segments.length > 0
         ? segmentsToSrt(data.segments)
         : data.transcript
-          ? transcriptToSrt(data.transcript, data.language)
-          : buildMockSrt(data.topic || data.videoName, data.language));
+          ? transcriptToSrt(data.transcript, finalLanguage)
+          : buildMockSrt(data.topic || data.videoName, finalLanguage));
 
     const { data: row, error } = await context.supabase
       .from("video_metadata")
@@ -295,7 +297,7 @@ export const generateMetadata = createServerFn({ method: "POST" })
         user_id: context.userId,
         video_name: data.videoName,
         thumbnail_url: data.thumbnailDataUrl ?? null,
-        language: data.language,
+        language: finalLanguage,
         topic: data.topic,
         keywords: data.keywords,
         metadata_json: metadata,
@@ -308,7 +310,7 @@ export const generateMetadata = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
 
-    return { row, quota };
+    return { row, quota, detectedLanguage };
   });
 
 export const listMyMetadata = createServerFn({ method: "GET" })
